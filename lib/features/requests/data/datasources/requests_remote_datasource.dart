@@ -16,6 +16,7 @@ class RequestsRemoteDataSource {
     final id = row['id'] as String;
     final title = row['title'] as String;
     final status = row['status'] as String;
+    final description = row['description'] as String?;
     final locationGeoJson = row['location_geojson'] as Map<String, dynamic>?;
 
     final latitude = _latFromGeo(locationGeoJson);
@@ -29,6 +30,7 @@ class RequestsRemoteDataSource {
       id: id,
       title: title,
       status: status,
+      description: description,
       location: LatLng(latitude, longitude),
     );
   }

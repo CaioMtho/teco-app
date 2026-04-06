@@ -25,6 +25,7 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
 
   LatLng _mainLocation = AppConstants.testUserFallbackLocation;
   List<RequestEntity> _openRequests = const [];
+  RequestEntity? _selectedRequest;
   bool _isLoading = true;
   String? _errorMessage;
 
@@ -32,6 +33,37 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
   void initState() {
     super.initState();
     _loadMapData();
+  }
+
+  void _onRequestMarkerTap(RequestEntity request) {
+    setState(() {
+      _selectedRequest = request;
+    });
+  }
+
+  void _onCloseRequestModal() {
+    setState(() {
+      _selectedRequest = null;
+    });
+  }
+
+  Future<void> _showUserMarkerModal() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+            child: Text(
+              'Esse é você',
+              style: Theme.of(context).textTheme.titleMedium,
+              textAlign: TextAlign.center,
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _loadMapData() async {
@@ -158,7 +190,18 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
             alignment: Alignment.bottomCenter,
             child: SafeArea(
               minimum: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: const _BottomBar(),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 240),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                child: _selectedRequest == null
+                    ? const _BottomBar(key: ValueKey('bottom-bar'))
+                    : _RequestDetailsModal(
+                        key: ValueKey(_selectedRequest!.id),
+                        request: _selectedRequest!,
+                        onClose: _onCloseRequestModal,
+                      ),
+              ),
             ),
           ),
           if (_isLoading)
@@ -172,7 +215,7 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
             Positioned(
               left: 16,
               right: 16,
-              bottom: 86,
+              bottom: _selectedRequest != null ? 234 : 86,
               child: Material(
                 borderRadius: BorderRadius.circular(12),
                 color: const Color(0xCCB00020),
@@ -187,11 +230,18 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
             ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.small(
-        onPressed: () {
-          _mapController.move(_mainLocation, 13.5);
-        },
-        child: const Icon(Icons.my_location_rounded),
+      floatingActionButton: Padding(
+        padding: EdgeInsets.only(bottom: _selectedRequest != null ? 238 : 86),
+        child: Tooltip(
+          message: 'Voltar para sua localizacao',
+          child: FloatingActionButton.small(
+            hoverElevation: 10,
+            onPressed: () {
+              _mapController.move(_mainLocation, 13.5);
+            },
+            child: const Icon(Icons.my_location_rounded),
+          ),
+        ),
       ),
     );
   }
@@ -201,20 +251,24 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
       point: _mainLocation,
       width: 52,
       height: 52,
-      child: Container(
-        decoration: BoxDecoration(
-          color: colorScheme.primary,
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 3),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x55000000),
-              blurRadius: 12,
-              offset: Offset(0, 4),
-            ),
-          ],
+      child: GestureDetector(
+        onTap: _showUserMarkerModal,
+        child: Container(
+          decoration: BoxDecoration(
+            color: colorScheme.primary,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 3),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x55000000),
+                blurRadius: 12,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child:
+              const Icon(Icons.person_pin_circle_rounded, color: Colors.white),
         ),
-        child: const Icon(Icons.person_pin_circle_rounded, color: Colors.white),
       ),
     );
   }
@@ -226,16 +280,19 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
             point: request.location,
             width: 42,
             height: 42,
-            child: Container(
-              decoration: BoxDecoration(
-                color: colorScheme.error,
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 2),
-              ),
-              child: const Icon(
-                Icons.build_circle_rounded,
-                color: Colors.white,
-                size: 22,
+            child: GestureDetector(
+              onTap: () => _onRequestMarkerTap(request),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: colorScheme.error,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                ),
+                child: const Icon(
+                  Icons.build_circle_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
               ),
             ),
           ),
@@ -260,28 +317,34 @@ class _TopBar extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Row(
           children: [
-            Icon(Icons.menu_rounded, color: colorScheme.onPrimary),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'Praca da Se',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: colorScheme.onPrimary,
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
+            _TopBarAction(
+              icon: Icons.menu_rounded,
+              tooltip: 'Menu',
+              onTap: () {},
+              color: colorScheme.onPrimary,
             ),
-            Icon(Icons.search_rounded, color: colorScheme.onPrimary),
+            const Spacer(),
+            _TopBarAction(
+              icon: Icons.search_rounded,
+              tooltip: 'Buscar',
+              onTap: () {},
+              color: colorScheme.onPrimary,
+            ),
             const SizedBox(width: 10),
-            CircleAvatar(
-              radius: 12,
-              backgroundColor: const Color(0xFF9A7BFF),
-              child: Text(
-                'A',
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
+            _TopBarAction(
+              tooltip: 'Perfil',
+              onTap: () {},
+              color: colorScheme.onPrimary,
+              child: CircleAvatar(
+                radius: 12,
+                backgroundColor: const Color(0xFF9A7BFF),
+                child: Text(
+                  'A',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
               ),
             ),
           ],
@@ -292,7 +355,7 @@ class _TopBar extends StatelessWidget {
 }
 
 class _BottomBar extends StatelessWidget {
-  const _BottomBar();
+  const _BottomBar({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -306,7 +369,11 @@ class _BottomBar extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: const [
-            _BottomIcon(icon: Icons.home_rounded, label: 'inicio', selected: true),
+            _BottomIcon(
+              icon: Icons.home_rounded,
+              label: 'inicio',
+              selected: true,
+            ),
             _BottomIcon(icon: Icons.radio_button_checked, label: 'requisicoes'),
             _BottomIcon(icon: Icons.person_outline_rounded, label: 'perfil'),
             _BottomIcon(icon: Icons.settings_outlined, label: 'configuracao'),
@@ -332,22 +399,155 @@ class _BottomIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     final iconColor = selected ? const Color(0xFF9A7BFF) : Colors.white70;
 
-    return SizedBox(
-      width: 72,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: iconColor, size: 20),
-          const SizedBox(height: 3),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: iconColor,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {},
+        borderRadius: BorderRadius.circular(14),
+        hoverColor: Colors.white10,
+        child: SizedBox(
+          width: 72,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: iconColor, size: 20),
+                const SizedBox(height: 3),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: iconColor,
+                      ),
                 ),
+              ],
+            ),
           ),
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TopBarAction extends StatelessWidget {
+  const _TopBarAction({
+    required this.tooltip,
+    required this.onTap,
+    required this.color,
+    this.icon,
+    this.child,
+  }) : assert(icon != null || child != null);
+
+  final String tooltip;
+  final VoidCallback onTap;
+  final Color color;
+  final IconData? icon;
+  final Widget? child;
+
+  @override
+  Widget build(BuildContext context) {
+    final button = InkResponse(
+      onTap: onTap,
+      radius: 20,
+      hoverColor: Colors.white10,
+      highlightShape: BoxShape.circle,
+      child: SizedBox(
+        width: 32,
+        height: 32,
+        child: Center(
+          child: child ?? Icon(icon, color: color),
+        ),
+      ),
+    );
+
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: button,
+      ),
+    );
+  }
+}
+
+class _RequestDetailsModal extends StatelessWidget {
+  const _RequestDetailsModal({
+    super.key,
+    required this.request,
+    required this.onClose,
+  });
+
+  final RequestEntity request;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final description = request.description?.trim();
+
+    return Material(
+      elevation: 10,
+      color: const Color(0xFF222431),
+      borderRadius: BorderRadius.circular(24),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    request.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Tooltip(
+                  message: 'Fechar',
+                  child: IconButton(
+                    onPressed: onClose,
+                    icon: const Icon(Icons.close_rounded),
+                    color: Colors.white,
+                    hoverColor: Colors.white10,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              description != null && description.isNotEmpty
+                  ? description
+                  : 'Sem descricao para esta requisicao.',
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Colors.white70,
+                  ),
+            ),
+            const SizedBox(height: 14),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.icon(
+                onPressed: () {},
+                icon: const Icon(Icons.chat_bubble_outline_rounded),
+                label: const Text('Criar chat'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: colorScheme.primary,
+                  foregroundColor: colorScheme.onPrimary,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
