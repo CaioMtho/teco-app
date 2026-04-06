@@ -150,3 +150,5 @@ doc/api/
 
 .flutter-plugins
 .flutter-plugins-dependencies
+
+scripts/create_test_user.sh
