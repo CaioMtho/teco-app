@@ -6,8 +6,12 @@ import 'package:latlong2/latlong.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../data/datasources/requests_remote_datasource.dart';
 import '../../data/repositories/requests_repository_impl.dart';
+import '../../domain/repositories/requests_repository.dart';
+import '../../domain/usecases/delete_current_user_request_usecase.dart';
+import '../../domain/usecases/get_current_user_open_requests_usecase.dart';
 import '../../domain/entities/request_entity.dart';
 import '../../domain/usecases/get_nearby_open_requests_usecase.dart';
+import '../../domain/usecases/update_current_user_request_usecase.dart';
 
 class RequestsMapPage extends StatefulWidget {
   const RequestsMapPage({super.key});
@@ -18,15 +22,28 @@ class RequestsMapPage extends StatefulWidget {
 
 class _RequestsMapPageState extends State<RequestsMapPage> {
   final MapController _mapController = MapController();
-  final GetNearbyOpenRequestsUseCase _getNearbyOpenRequestsUseCase =
-      GetNearbyOpenRequestsUseCase(
-    RequestsRepositoryImpl(RequestsRemoteDataSource()),
-  );
+  final RequestsRepository _requestsRepository =
+    RequestsRepositoryImpl(RequestsRemoteDataSource());
+
+  late final GetNearbyOpenRequestsUseCase _getNearbyOpenRequestsUseCase =
+    GetNearbyOpenRequestsUseCase(_requestsRepository);
+  late final GetCurrentUserOpenRequestsUseCase
+    _getCurrentUserOpenRequestsUseCase =
+    GetCurrentUserOpenRequestsUseCase(_requestsRepository);
+  late final UpdateCurrentUserRequestUseCase
+    _updateCurrentUserRequestUseCase =
+    UpdateCurrentUserRequestUseCase(_requestsRepository);
+  late final DeleteCurrentUserRequestUseCase
+    _deleteCurrentUserRequestUseCase =
+    DeleteCurrentUserRequestUseCase(_requestsRepository);
 
   LatLng _mainLocation = AppConstants.testUserFallbackLocation;
   List<RequestEntity> _openRequests = const [];
+  List<RequestEntity> _currentUserOpenRequests = const [];
   RequestEntity? _selectedRequest;
+  bool _isMyRequestsPanelOpen = false;
   bool _isLoading = true;
+  bool _isLoadingMyRequests = false;
   String? _errorMessage;
 
   @override
@@ -37,6 +54,7 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
 
   void _onRequestMarkerTap(RequestEntity request) {
     setState(() {
+      _isMyRequestsPanelOpen = false;
       _selectedRequest = request;
     });
   }
@@ -45,6 +63,153 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
     setState(() {
       _selectedRequest = null;
     });
+  }
+
+  void _openMyRequestsPanel() {
+    setState(() {
+      _selectedRequest = null;
+      _isMyRequestsPanelOpen = true;
+    });
+  }
+
+  void _closeMyRequestsPanel() {
+    setState(() {
+      _isMyRequestsPanelOpen = false;
+    });
+  }
+
+  Future<void> _refreshMyOpenRequests({bool withLoadingState = false}) async {
+    if (withLoadingState) {
+      setState(() {
+        _isLoadingMyRequests = true;
+      });
+    }
+
+    try {
+      final requests = await _getCurrentUserOpenRequestsUseCase.call();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _currentUserOpenRequests = requests;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Nao foi possivel carregar suas requisicoes abertas.'),
+        ),
+      );
+    } finally {
+      if (withLoadingState && mounted) {
+        setState(() {
+          _isLoadingMyRequests = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _onEditRequest(RequestEntity request) async {
+    final payload = await showModalBottomSheet<_RequestEditPayload>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => _EditRequestSheet(request: request),
+    );
+
+    if (payload == null) {
+      return;
+    }
+
+    try {
+      await _updateCurrentUserRequestUseCase.call(
+        requestId: request.id,
+        title: payload.title,
+        description: payload.description,
+        budgetRange: payload.budgetRange,
+        isRemote: payload.isRemote,
+      );
+
+      await _loadMapData();
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Requisicao atualizada com sucesso.')),
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Nao foi possivel atualizar a requisicao.'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _onDeleteRequest(RequestEntity request) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Excluir requisicao'),
+          content: Text(
+            'Tem certeza que deseja excluir "${request.title}"? Essa acao nao pode ser desfeita.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Theme.of(context).colorScheme.onError,
+              ),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Excluir'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldDelete != true) {
+      return;
+    }
+
+    try {
+      await _deleteCurrentUserRequestUseCase.call(requestId: request.id);
+      await _loadMapData();
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Requisicao excluida com sucesso.')),
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Nao foi possivel excluir a requisicao.'),
+        ),
+      );
+    }
   }
 
   Future<void> _showUserMarkerModal() async {
@@ -79,6 +244,25 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
         radiusKm: AppConstants.openRequestsRadiusKm,
       );
 
+      List<RequestEntity> currentUserOpenRequests = const [];
+      try {
+        currentUserOpenRequests =
+            await _getCurrentUserOpenRequestsUseCase.call();
+      } catch (_) {
+        currentUserOpenRequests = const [];
+      }
+
+      final selectedRequestId = _selectedRequest?.id;
+      RequestEntity? refreshedSelectedRequest;
+      if (selectedRequestId != null) {
+        for (final request in openRequests) {
+          if (request.id == selectedRequestId) {
+            refreshedSelectedRequest = request;
+            break;
+          }
+        }
+      }
+
       if (!mounted) {
         return;
       }
@@ -86,6 +270,8 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
       setState(() {
         _mainLocation = mainLocation;
         _openRequests = openRequests;
+        _currentUserOpenRequests = currentUserOpenRequests;
+        _selectedRequest = refreshedSelectedRequest;
       });
 
       _mapController.move(_mainLocation, 12.5);
@@ -140,6 +326,12 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final errorBottomPadding = _isMyRequestsPanelOpen
+      ? 448.0
+      : (_selectedRequest != null ? 234.0 : 86.0);
+    final fabBottomPadding = _isMyRequestsPanelOpen
+      ? 452.0
+      : (_selectedRequest != null ? 238.0 : 86.0);
 
     return Scaffold(
       body: Stack(
@@ -194,9 +386,30 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
                 duration: const Duration(milliseconds: 240),
                 switchInCurve: Curves.easeOutCubic,
                 switchOutCurve: Curves.easeInCubic,
-                child: _selectedRequest == null
-                    ? const _BottomBar(key: ValueKey('bottom-bar'))
-                    : _RequestDetailsModal(
+                child: _isMyRequestsPanelOpen
+                    ? _MyRequestsModal(
+                        key: const ValueKey('my-requests-modal'),
+                        requests: _currentUserOpenRequests,
+                        isLoading: _isLoadingMyRequests,
+                        onClose: _closeMyRequestsPanel,
+                        onRefresh: () {
+                          _refreshMyOpenRequests(withLoadingState: true);
+                        },
+                        onEdit: _onEditRequest,
+                        onDelete: _onDeleteRequest,
+                      )
+                    : _selectedRequest == null
+                        ? _BottomBar(
+                            key: const ValueKey('bottom-bar'),
+                            onHomeTap: () {
+                              setState(() {
+                                _selectedRequest = null;
+                                _isMyRequestsPanelOpen = false;
+                              });
+                            },
+                            onRequestsTap: _openMyRequestsPanel,
+                          )
+                        : _RequestDetailsModal(
                         key: ValueKey(_selectedRequest!.id),
                         request: _selectedRequest!,
                         onClose: _onCloseRequestModal,
@@ -215,7 +428,7 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
             Positioned(
               left: 16,
               right: 16,
-              bottom: _selectedRequest != null ? 234 : 86,
+              bottom: errorBottomPadding,
               child: Material(
                 borderRadius: BorderRadius.circular(12),
                 color: const Color(0xCCB00020),
@@ -231,7 +444,7 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
         ],
       ),
       floatingActionButton: Padding(
-        padding: EdgeInsets.only(bottom: _selectedRequest != null ? 238 : 86),
+        padding: EdgeInsets.only(bottom: fabBottomPadding),
         child: Tooltip(
           message: 'Voltar para sua localizacao',
           child: FloatingActionButton.small(
@@ -355,7 +568,14 @@ class _TopBar extends StatelessWidget {
 }
 
 class _BottomBar extends StatelessWidget {
-  const _BottomBar({super.key});
+  const _BottomBar({
+    super.key,
+    required this.onHomeTap,
+    required this.onRequestsTap,
+  });
+
+  final VoidCallback onHomeTap;
+  final VoidCallback onRequestsTap;
 
   @override
   Widget build(BuildContext context) {
@@ -368,15 +588,26 @@ class _BottomBar extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: const [
+          children: [
             _BottomIcon(
               icon: Icons.home_rounded,
               label: 'inicio',
               selected: true,
+              onTap: onHomeTap,
             ),
-            _BottomIcon(icon: Icons.radio_button_checked, label: 'requisicoes'),
-            _BottomIcon(icon: Icons.person_outline_rounded, label: 'perfil'),
-            _BottomIcon(icon: Icons.settings_outlined, label: 'configuracao'),
+            _BottomIcon(
+              icon: Icons.radio_button_checked,
+              label: 'requisicoes',
+              onTap: onRequestsTap,
+            ),
+            const _BottomIcon(
+              icon: Icons.person_outline_rounded,
+              label: 'perfil',
+            ),
+            const _BottomIcon(
+              icon: Icons.settings_outlined,
+              label: 'configuracao',
+            ),
           ],
         ),
       ),
@@ -388,11 +619,13 @@ class _BottomIcon extends StatelessWidget {
   const _BottomIcon({
     required this.icon,
     required this.label,
+    this.onTap,
     this.selected = false,
   });
 
   final IconData icon;
   final String label;
+  final VoidCallback? onTap;
   final bool selected;
 
   @override
@@ -402,7 +635,7 @@ class _BottomIcon extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () {},
+        onTap: onTap,
         borderRadius: BorderRadius.circular(14),
         hoverColor: Colors.white10,
         child: SizedBox(
@@ -544,6 +777,423 @@ class _RequestDetailsModal extends StatelessWidget {
                   backgroundColor: colorScheme.primary,
                   foregroundColor: colorScheme.onPrimary,
                 ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MyRequestsModal extends StatelessWidget {
+  const _MyRequestsModal({
+    super.key,
+    required this.requests,
+    required this.isLoading,
+    required this.onClose,
+    required this.onRefresh,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final List<RequestEntity> requests;
+  final bool isLoading;
+  final VoidCallback onClose;
+  final VoidCallback onRefresh;
+  final ValueChanged<RequestEntity> onEdit;
+  final ValueChanged<RequestEntity> onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final height = MediaQuery.sizeOf(context).height * 0.62;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Material(
+      elevation: 10,
+      color: const Color(0xFF222431),
+      borderRadius: BorderRadius.circular(24),
+      child: SizedBox(
+        height: height,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Suas requisicoes abertas',
+                      style: textTheme.titleMedium?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  Tooltip(
+                    message: 'Atualizar lista',
+                    child: IconButton(
+                      onPressed: onRefresh,
+                      icon: const Icon(Icons.refresh_rounded),
+                      color: Colors.white,
+                      hoverColor: Colors.white10,
+                    ),
+                  ),
+                  Tooltip(
+                    message: 'Fechar',
+                    child: IconButton(
+                      onPressed: onClose,
+                      icon: const Icon(Icons.close_rounded),
+                      color: Colors.white,
+                      hoverColor: Colors.white10,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${requests.length} requisicao(oes) abertas',
+                style: textTheme.bodySmall?.copyWith(color: Colors.white70),
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : requests.isEmpty
+                        ? Center(
+                            child: Text(
+                              'Voce nao possui requisicoes abertas no momento.',
+                              style: textTheme.bodyMedium?.copyWith(
+                                color: Colors.white70,
+                              ),
+                            ),
+                          )
+                        : ListView.separated(
+                            itemCount: requests.length,
+                          separatorBuilder: (_, index) =>
+                                const SizedBox(height: 10),
+                            itemBuilder: (context, index) {
+                              final request = requests[index];
+                              return _MyRequestCard(
+                                request: request,
+                                onEdit: () => onEdit(request),
+                                onDelete: () => onDelete(request),
+                              );
+                            },
+                          ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MyRequestCard extends StatelessWidget {
+  const _MyRequestCard({
+    required this.request,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final RequestEntity request;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final description = request.description?.trim();
+
+    return Card(
+      margin: EdgeInsets.zero,
+      color: const Color(0xFF2A2D3B),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    request.title,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                Chip(
+                  label: const Text('Aberta'),
+                  visualDensity: VisualDensity.compact,
+                  backgroundColor: colorScheme.primary.withValues(alpha: 0.20),
+                  labelStyle: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: colorScheme.onPrimary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              description != null && description.isNotEmpty
+                  ? description
+                  : 'Sem descricao.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Colors.white70,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                _RequestMetaChip(
+                  icon: Icons.attach_money_rounded,
+                  text: request.budgetRange?.isNotEmpty == true
+                      ? request.budgetRange!
+                      : 'Sem faixa de orcamento',
+                ),
+                _RequestMetaChip(
+                  icon: request.isRemote == true
+                      ? Icons.wifi_rounded
+                      : Icons.location_on_outlined,
+                  text: request.isRemote == true ? 'Remoto' : 'Presencial',
+                ),
+                _RequestMetaChip(
+                  icon: Icons.schedule_rounded,
+                  text: _formatDate(request.createdAt),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: onEdit,
+                    icon: const Icon(Icons.edit_rounded),
+                    label: const Text('Editar'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: const BorderSide(color: Colors.white30),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: onDelete,
+                    icon: const Icon(Icons.delete_outline_rounded),
+                    label: const Text('Excluir'),
+                    style: FilledButton.styleFrom(
+                      foregroundColor: colorScheme.onErrorContainer,
+                      backgroundColor: colorScheme.errorContainer,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatDate(DateTime? value) {
+    if (value == null) {
+      return 'Sem data';
+    }
+
+    final day = value.day.toString().padLeft(2, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    final year = value.year.toString();
+    final hour = value.hour.toString().padLeft(2, '0');
+    final minute = value.minute.toString().padLeft(2, '0');
+
+    return '$day/$month/$year $hour:$minute';
+  }
+}
+
+class _RequestMetaChip extends StatelessWidget {
+  const _RequestMetaChip({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0x1AFFFFFF),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: Colors.white70),
+            const SizedBox(width: 6),
+            Text(
+              text,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: Colors.white70,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RequestEditPayload {
+  const _RequestEditPayload({
+    required this.title,
+    required this.description,
+    required this.budgetRange,
+    required this.isRemote,
+  });
+
+  final String title;
+  final String? description;
+  final String? budgetRange;
+  final bool isRemote;
+}
+
+class _EditRequestSheet extends StatefulWidget {
+  const _EditRequestSheet({required this.request});
+
+  final RequestEntity request;
+
+  @override
+  State<_EditRequestSheet> createState() => _EditRequestSheetState();
+}
+
+class _EditRequestSheetState extends State<_EditRequestSheet> {
+  late final TextEditingController _titleController;
+  late final TextEditingController _descriptionController;
+  late final TextEditingController _budgetRangeController;
+  late bool _isRemote;
+
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController(text: widget.request.title);
+    _descriptionController = TextEditingController(
+      text: widget.request.description,
+    );
+    _budgetRangeController = TextEditingController(
+      text: widget.request.budgetRange,
+    );
+    _isRemote = widget.request.isRemote ?? false;
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    _budgetRangeController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final title = _titleController.text.trim();
+    if (title.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Informe um titulo para a requisicao.')),
+      );
+      return;
+    }
+
+    final description = _descriptionController.text.trim();
+    final budgetRange = _budgetRangeController.text.trim();
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    Navigator.of(context).pop(
+      _RequestEditPayload(
+        title: title,
+        description: description.isEmpty ? null : description,
+        budgetRange: budgetRange.isEmpty ? null : budgetRange,
+        isRemote: _isRemote,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Editar requisicao',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _titleController,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Titulo',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _descriptionController,
+              textInputAction: TextInputAction.newline,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                labelText: 'Descricao',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _budgetRangeController,
+              textInputAction: TextInputAction.done,
+              decoration: const InputDecoration(
+                labelText: 'Faixa de orcamento',
+                border: OutlineInputBorder(),
+                hintText: 'Ex.: R\$ 500 - R\$ 1000',
+              ),
+            ),
+            const SizedBox(height: 8),
+            SwitchListTile.adaptive(
+              value: _isRemote,
+              onChanged: (value) {
+                setState(() {
+                  _isRemote = value;
+                });
+              },
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Aceita trabalho remoto'),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _isSaving ? null : _submit,
+                icon: const Icon(Icons.save_outlined),
+                label: const Text('Salvar alteracoes'),
               ),
             ),
           ],
