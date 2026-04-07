@@ -12,6 +12,7 @@ import '../../domain/usecases/get_current_user_open_requests_usecase.dart';
 import '../../domain/entities/request_entity.dart';
 import '../../domain/usecases/get_nearby_open_requests_usecase.dart';
 import '../../domain/usecases/update_current_user_request_usecase.dart';
+import '../../../main_page/presentation/pages/profile_page.dart';
 
 class RequestsMapPage extends StatefulWidget {
   const RequestsMapPage({super.key});
@@ -546,7 +547,13 @@ class _TopBar extends StatelessWidget {
             const SizedBox(width: 10),
             _TopBarAction(
               tooltip: 'Perfil',
-              onTap: () {},
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const ProfilePage(),
+                  ),
+                );
+              },
               color: colorScheme.onPrimary,
               child: CircleAvatar(
                 radius: 12,
