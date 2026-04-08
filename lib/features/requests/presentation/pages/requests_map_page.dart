@@ -23,20 +23,20 @@ class RequestsMapPage extends StatefulWidget {
 
 class _RequestsMapPageState extends State<RequestsMapPage> {
   final MapController _mapController = MapController();
-  final RequestsRepository _requestsRepository =
-    RequestsRepositoryImpl(RequestsRemoteDataSource());
+  final RequestsRepository _requestsRepository = RequestsRepositoryImpl(
+    RequestsRemoteDataSource(),
+  );
 
   late final GetNearbyOpenRequestsUseCase _getNearbyOpenRequestsUseCase =
-    GetNearbyOpenRequestsUseCase(_requestsRepository);
+      GetNearbyOpenRequestsUseCase(_requestsRepository);
   late final GetCurrentUserOpenRequestsUseCase
-    _getCurrentUserOpenRequestsUseCase =
-    GetCurrentUserOpenRequestsUseCase(_requestsRepository);
-  late final UpdateCurrentUserRequestUseCase
-    _updateCurrentUserRequestUseCase =
-    UpdateCurrentUserRequestUseCase(_requestsRepository);
-  late final DeleteCurrentUserRequestUseCase
-    _deleteCurrentUserRequestUseCase =
-    DeleteCurrentUserRequestUseCase(_requestsRepository);
+  _getCurrentUserOpenRequestsUseCase = GetCurrentUserOpenRequestsUseCase(
+    _requestsRepository,
+  );
+  late final UpdateCurrentUserRequestUseCase _updateCurrentUserRequestUseCase =
+      UpdateCurrentUserRequestUseCase(_requestsRepository);
+  late final DeleteCurrentUserRequestUseCase _deleteCurrentUserRequestUseCase =
+      DeleteCurrentUserRequestUseCase(_requestsRepository);
 
   LatLng _mainLocation = AppConstants.testUserFallbackLocation;
   List<RequestEntity> _openRequests = const [];
@@ -103,7 +103,7 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Nao foi possivel carregar suas requisicoes abertas.'),
+          content: Text('Não foi possível carregar suas requisições abertas.'),
         ),
       );
     } finally {
@@ -143,7 +143,7 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Requisicao atualizada com sucesso.')),
+        const SnackBar(content: Text('Requisição atualizada com sucesso.')),
       );
     } catch (_) {
       if (!mounted) {
@@ -152,7 +152,7 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Nao foi possivel atualizar a requisicao.'),
+          content: Text('Não foi possível atualizar a requisição.'),
         ),
       );
     }
@@ -163,9 +163,9 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Excluir requisicao'),
+          title: const Text('Excluir requisição'),
           content: Text(
-            'Tem certeza que deseja excluir "${request.title}"? Essa acao nao pode ser desfeita.',
+            'Tem certeza de que deseja excluir "${request.title}"? Essa ação não pode ser desfeita.',
           ),
           actions: [
             TextButton(
@@ -198,7 +198,7 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Requisicao excluida com sucesso.')),
+        const SnackBar(content: Text('Requisição excluída com sucesso.')),
       );
     } catch (_) {
       if (!mounted) {
@@ -206,9 +206,7 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Nao foi possivel excluir a requisicao.'),
-        ),
+        const SnackBar(content: Text('Não foi possível excluir a requisição.')),
       );
     }
   }
@@ -247,8 +245,8 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
 
       List<RequestEntity> currentUserOpenRequests = const [];
       try {
-        currentUserOpenRequests =
-            await _getCurrentUserOpenRequestsUseCase.call();
+        currentUserOpenRequests = await _getCurrentUserOpenRequestsUseCase
+            .call();
       } catch (_) {
         currentUserOpenRequests = const [];
       }
@@ -283,7 +281,7 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
 
       setState(() {
         _errorMessage =
-            'Nao foi possivel carregar os dados do mapa. Tente novamente.';
+            'Não foi possível carregar os dados do mapa. Tente novamente.';
       });
     } finally {
       if (mounted) {
@@ -328,11 +326,11 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final errorBottomPadding = _isMyRequestsPanelOpen
-      ? 448.0
-      : (_selectedRequest != null ? 234.0 : 86.0);
+        ? 448.0
+        : (_selectedRequest != null ? 234.0 : 86.0);
     final fabBottomPadding = _isMyRequestsPanelOpen
-      ? 452.0
-      : (_selectedRequest != null ? 238.0 : 86.0);
+        ? 452.0
+        : (_selectedRequest != null ? 238.0 : 86.0);
 
     return Scaffold(
       body: Stack(
@@ -400,17 +398,17 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
                         onDelete: _onDeleteRequest,
                       )
                     : _selectedRequest == null
-                        ? _BottomBar(
-                            key: const ValueKey('bottom-bar'),
-                            onHomeTap: () {
-                              setState(() {
-                                _selectedRequest = null;
-                                _isMyRequestsPanelOpen = false;
-                              });
-                            },
-                            onRequestsTap: _openMyRequestsPanel,
-                          )
-                        : _RequestDetailsModal(
+                    ? _BottomBar(
+                        key: const ValueKey('bottom-bar'),
+                        onHomeTap: () {
+                          setState(() {
+                            _selectedRequest = null;
+                            _isMyRequestsPanelOpen = false;
+                          });
+                        },
+                        onRequestsTap: _openMyRequestsPanel,
+                      )
+                    : _RequestDetailsModal(
                         key: ValueKey(_selectedRequest!.id),
                         request: _selectedRequest!,
                         onClose: _onCloseRequestModal,
@@ -447,7 +445,7 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
       floatingActionButton: Padding(
         padding: EdgeInsets.only(bottom: fabBottomPadding),
         child: Tooltip(
-          message: 'Voltar para sua localizacao',
+          message: 'Voltar para sua localização',
           child: FloatingActionButton.small(
             hoverElevation: 10,
             onPressed: () {
@@ -480,8 +478,10 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
               ),
             ],
           ),
-          child:
-              const Icon(Icons.person_pin_circle_rounded, color: Colors.white),
+          child: const Icon(
+            Icons.person_pin_circle_rounded,
+            color: Colors.white,
+          ),
         ),
       ),
     );
@@ -532,8 +532,8 @@ class _TopBar extends StatelessWidget {
         child: Row(
           children: [
             _TopBarAction(
-              icon: Icons.menu_rounded,
-              tooltip: 'Menu',
+              icon: Icons.chat_bubble_outline_rounded,
+              tooltip: 'Chat',
               onTap: () {},
               color: colorScheme.onPrimary,
             ),
@@ -549,9 +549,7 @@ class _TopBar extends StatelessWidget {
               tooltip: 'Perfil',
               onTap: () {
                 Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const ProfilePage(),
-                  ),
+                  MaterialPageRoute<void>(builder: (_) => const ProfilePage()),
                 );
               },
               color: colorScheme.onPrimary,
@@ -561,9 +559,9 @@ class _TopBar extends StatelessWidget {
                 child: Text(
                   'A',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),
@@ -592,28 +590,30 @@ class _BottomBar extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _BottomIcon(
-              icon: Icons.home_rounded,
-              label: 'inicio',
-              selected: true,
-              onTap: onHomeTap,
+            Expanded(
+              child: _BottomIcon(
+                icon: Icons.home_rounded,
+                label: 'início',
+                selected: true,
+                onTap: onHomeTap,
+              ),
             ),
-            _BottomIcon(
-              icon: Icons.radio_button_checked,
-              label: 'requisicoes',
-              onTap: onRequestsTap,
+            Expanded(
+              child: _BottomIcon(
+                icon: Icons.radio_button_checked,
+                label: 'requisições',
+                onTap: onRequestsTap,
+              ),
             ),
-            const _BottomIcon(
-              icon: Icons.person_outline_rounded,
-              label: 'perfil',
-            ),
-            const _BottomIcon(
-              icon: Icons.settings_outlined,
-              label: 'configuracao',
+            const Expanded(
+              child: _BottomIcon(
+                icon: Icons.settings_outlined,
+                label: 'configuração',
+              ),
             ),
           ],
         ),
@@ -645,25 +645,25 @@ class _BottomIcon extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(14),
         hoverColor: Colors.white10,
+        splashColor: Colors.white12,
         child: SizedBox(
-          width: 72,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, color: iconColor, size: 20),
-                const SizedBox(height: 3),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: iconColor,
-                      ),
+          height: 54,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: iconColor, size: 20),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: iconColor,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -696,18 +696,13 @@ class _TopBarAction extends StatelessWidget {
       child: SizedBox(
         width: 32,
         height: 32,
-        child: Center(
-          child: child ?? Icon(icon, color: color),
-        ),
+        child: Center(child: child ?? Icon(icon, color: color)),
       ),
     );
 
     return Tooltip(
       message: tooltip,
-      child: Material(
-        color: Colors.transparent,
-        child: button,
-      ),
+      child: Material(color: Colors.transparent, child: button),
     );
   }
 }
@@ -745,9 +740,9 @@ class _RequestDetailsModal extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                        ),
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -766,12 +761,12 @@ class _RequestDetailsModal extends StatelessWidget {
             Text(
               description != null && description.isNotEmpty
                   ? description
-                  : 'Sem descricao para esta requisicao.',
+                  : 'Sem descrição para esta requisição.',
               maxLines: 4,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.white70,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: Colors.white70),
             ),
             const SizedBox(height: 14),
             Align(
@@ -860,7 +855,9 @@ class _MyRequestsModal extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                '${requests.length} requisicao(oes) abertas',
+                requests.length == 1
+                    ? '1 requisição aberta'
+                    : '${requests.length} requisições abertas',
                 style: textTheme.bodySmall?.copyWith(color: Colors.white70),
               ),
               const SizedBox(height: 12),
@@ -868,27 +865,27 @@ class _MyRequestsModal extends StatelessWidget {
                 child: isLoading
                     ? const Center(child: CircularProgressIndicator())
                     : requests.isEmpty
-                        ? Center(
-                            child: Text(
-                              'Voce nao possui requisicoes abertas no momento.',
-                              style: textTheme.bodyMedium?.copyWith(
-                                color: Colors.white70,
-                              ),
-                            ),
-                          )
-                        : ListView.separated(
-                            itemCount: requests.length,
-                          separatorBuilder: (_, index) =>
-                                const SizedBox(height: 10),
-                            itemBuilder: (context, index) {
-                              final request = requests[index];
-                              return _MyRequestCard(
-                                request: request,
-                                onEdit: () => onEdit(request),
-                                onDelete: () => onDelete(request),
-                              );
-                            },
+                    ? Center(
+                        child: Text(
+                          'Você não possui requisições abertas no momento.',
+                          style: textTheme.bodyMedium?.copyWith(
+                            color: Colors.white70,
                           ),
+                        ),
+                      )
+                    : ListView.separated(
+                        itemCount: requests.length,
+                        separatorBuilder: (_, index) =>
+                            const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final request = requests[index];
+                          return _MyRequestCard(
+                            request: request,
+                            onEdit: () => onEdit(request),
+                            onDelete: () => onDelete(request),
+                          );
+                        },
+                      ),
               ),
             ],
           ),
@@ -949,9 +946,9 @@ class _MyRequestCard extends StatelessWidget {
               description != null && description.isNotEmpty
                   ? description
                   : 'Sem descricao.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.white70,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: Colors.white70),
             ),
             const SizedBox(height: 10),
             Wrap(
@@ -962,7 +959,7 @@ class _MyRequestCard extends StatelessWidget {
                   icon: Icons.attach_money_rounded,
                   text: request.budgetRange?.isNotEmpty == true
                       ? request.budgetRange!
-                      : 'Sem faixa de orcamento',
+                      : 'Sem faixa de orçamento',
                 ),
                 _RequestMetaChip(
                   icon: request.isRemote == true
@@ -1047,9 +1044,9 @@ class _RequestMetaChip extends StatelessWidget {
             const SizedBox(width: 6),
             Text(
               text,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: Colors.white70,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.labelSmall?.copyWith(color: Colors.white70),
             ),
           ],
         ),
@@ -1114,7 +1111,7 @@ class _EditRequestSheetState extends State<_EditRequestSheet> {
     final title = _titleController.text.trim();
     if (title.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Informe um titulo para a requisicao.')),
+        const SnackBar(content: Text('Informe um título para a requisição.')),
       );
       return;
     }
@@ -1148,17 +1145,17 @@ class _EditRequestSheetState extends State<_EditRequestSheet> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Editar requisicao',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+              'Editar requisição',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _titleController,
               textInputAction: TextInputAction.next,
               decoration: const InputDecoration(
-                labelText: 'Titulo',
+                labelText: 'Título',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -1169,7 +1166,7 @@ class _EditRequestSheetState extends State<_EditRequestSheet> {
               minLines: 2,
               maxLines: 4,
               decoration: const InputDecoration(
-                labelText: 'Descricao',
+                labelText: 'Descrição',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -1178,7 +1175,7 @@ class _EditRequestSheetState extends State<_EditRequestSheet> {
               controller: _budgetRangeController,
               textInputAction: TextInputAction.done,
               decoration: const InputDecoration(
-                labelText: 'Faixa de orcamento',
+                labelText: 'Faixa de orçamento',
                 border: OutlineInputBorder(),
                 hintText: 'Ex.: R\$ 500 - R\$ 1000',
               ),
