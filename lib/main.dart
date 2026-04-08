@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'app.dart';
 import 'core/services/supabase_service.dart';
-import 'feature/presentation/auth_screen.dart'; // ajuste o caminho conforme sua estrutura
+import 'features/auth/presentation/auth_screen.dart'; // ajuste o caminho conforme sua estrutura
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
