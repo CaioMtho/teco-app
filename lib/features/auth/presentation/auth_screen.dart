@@ -2,24 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:latlong2/latlong.dart';
 
 // ─── Paleta & Tema ────────────────────────────────────────────────────────────
 const _kPrimary = Color(0xFF0A0A0A);
-const _kAccent = Color.fromARGB(255, 246, 244, 244); // lime elétrico
-const _kSurface = Color(0xFF141414);
+const _kAccent = Color.fromARGB(255, 246, 244, 244);
 const _kCard = Color(0xFF1E1E1E);
 const _kMuted = Color(0xFF6B6B6B);
 const _kBorder = Color(0xFF2A2A2A);
 const _kError = Color(0xFFFF4D4D);
-
-// ─── Entry point (substitua pelo seu main.dart / router) ─────────────────────
-//
-//   void main() async {
-//     WidgetsFlutterBinding.ensureInitialized();
-//     await Supabase.initialize(url: 'URL', anonKey: 'KEY');
-//     runApp(MaterialApp(home: AuthScreen()));
-//   }
+const _kGreen = Color(0xFF22C55E);
+const _kGreenBg = Color(0xFF0D2B0D);
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -53,13 +47,11 @@ class _AuthScreenState extends State<AuthScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Header ──────────────────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.fromLTRB(28, 40, 28, 0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Logo mark
                   Container(
                     width: 40,
                     height: 40,
@@ -67,8 +59,7 @@ class _AuthScreenState extends State<AuthScreen>
                       color: _kAccent,
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.bolt,
-                        color: _kPrimary, size: 24),
+                    child: const Icon(Icons.bolt, color: _kPrimary, size: 24),
                   ),
                   const SizedBox(height: 32),
                   Text(
@@ -93,12 +84,10 @@ class _AuthScreenState extends State<AuthScreen>
                     ),
                   ),
                   const SizedBox(height: 32),
-                  // ── Tab Selector ───────────────────────────────────────────
                   _TabSelector(controller: _tab),
                 ],
               ),
             ),
-            // ── Forms ────────────────────────────────────────────────────────
             Expanded(
               child: TabBarView(
                 controller: _tab,
@@ -177,7 +166,6 @@ class _LoginFormState extends State<_LoginForm> {
         email: _emailCtrl.text.trim(),
         password: _passCtrl.text,
       );
-      // Navegar para home após login bem-sucedido
       // Navigator.of(context).pushReplacement(...)
     } on AuthException catch (e) {
       _showError(e.message);
@@ -189,14 +177,12 @@ class _LoginFormState extends State<_LoginForm> {
   }
 
   void _showError(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        backgroundColor: _kError,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg),
+      backgroundColor: _kError,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    ));
   }
 
   @override
@@ -242,7 +228,7 @@ class _LoginFormState extends State<_LoginForm> {
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
-                onPressed: () {}, // esqueci senha
+                onPressed: () {},
                 style: TextButton.styleFrom(
                   foregroundColor: _kMuted,
                   padding: EdgeInsets.zero,
@@ -279,24 +265,39 @@ class _RegisterFormState extends State<_RegisterForm> {
   final _nameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
+  final _confirmPassCtrl = TextEditingController();
   final _cpfCtrl = TextEditingController();
 
   String _userType = 'requester';
   bool _obscure = true;
+  bool _obscureConfirm = true;
   bool _loading = false;
+
+  // ── Localização ───────────────────────────────────────────────────────────
   LatLng? _location;
+  String? _resolvedAddress; // endereço legível confirmado
   bool _fetchingLocation = false;
+  bool _manualMode = false;
+
+  // ── Geocoding manual ──────────────────────────────────────────────────────
+  final _addressCtrl = TextEditingController();
+  bool _geocoding = false;
+  List<Location> _geocodingResults = [];
+  List<Placemark> _placemarks = [];
 
   @override
   void dispose() {
     _nameCtrl.dispose();
     _emailCtrl.dispose();
     _passCtrl.dispose();
+    _confirmPassCtrl.dispose();
     _cpfCtrl.dispose();
+    _addressCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _fetchLocation() async {
+  // ── Localização automática ────────────────────────────────────────────────
+  Future<void> _fetchAutoLocation() async {
     setState(() => _fetchingLocation = true);
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -319,8 +320,20 @@ class _RegisterFormState extends State<_RegisterForm> {
       final pos = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
+
+      // Reverse geocoding para mostrar endereço legível
+      final placemarks = await placemarkFromCoordinates(
+        pos.latitude,
+        pos.longitude,
+      );
+      final p = placemarks.isNotEmpty ? placemarks.first : null;
+      final address = p != null
+          ? _formatPlacemark(p)
+          : '${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}';
+
       setState(() {
         _location = LatLng(pos.latitude, pos.longitude);
+        _resolvedAddress = address;
       });
     } catch (_) {
       _showError('Não foi possível obter localização.');
@@ -329,29 +342,90 @@ class _RegisterFormState extends State<_RegisterForm> {
     }
   }
 
+  // ── Geocoding por endereço ────────────────────────────────────────────────
+  Future<void> _searchAddress() async {
+    final query = _addressCtrl.text.trim();
+    if (query.isEmpty) {
+      _showError('Digite um endereço para buscar.');
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _geocoding = true;
+      _geocodingResults = [];
+      _placemarks = [];
+      _location = null;
+      _resolvedAddress = null;
+    });
+    try {
+      final locations = await locationFromAddress(query);
+      if (locations.isEmpty) {
+        _showError('Nenhum resultado encontrado para esse endereço.');
+        return;
+      }
+      // Busca placemark para cada resultado (máx. 3)
+      final limited = locations.take(3).toList();
+      final placemarks = await Future.wait(
+        limited.map((loc) => placemarkFromCoordinates(
+              loc.latitude,
+              loc.longitude,
+            ).then((list) => list.isNotEmpty ? list.first : Placemark())),
+      );
+      setState(() {
+        _geocodingResults = limited;
+        _placemarks = placemarks;
+      });
+    } on NoResultFoundException {
+      _showError('Nenhum resultado encontrado para esse endereço.');
+    } catch (_) {
+      _showError('Erro ao buscar endereço. Tente novamente.');
+    } finally {
+      if (mounted) setState(() => _geocoding = false);
+    }
+  }
+
+  void _selectGeocodingResult(int index) {
+    final loc = _geocodingResults[index];
+    final pm = _placemarks[index];
+    setState(() {
+      _location = LatLng(loc.latitude, loc.longitude);
+      _resolvedAddress = _formatPlacemark(pm);
+      _geocodingResults = [];
+      _placemarks = [];
+    });
+  }
+
+  String _formatPlacemark(Placemark p) {
+    final parts = [
+      if (p.street != null && p.street!.isNotEmpty) p.street,
+      if (p.subLocality != null && p.subLocality!.isNotEmpty) p.subLocality,
+      if (p.locality != null && p.locality!.isNotEmpty) p.locality,
+      if (p.administrativeArea != null && p.administrativeArea!.isNotEmpty)
+        p.administrativeArea,
+    ];
+    return parts.join(', ');
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_location == null) {
-      _showError('Obtenha sua localização antes de continuar.');
+      _showError('Informe sua localização antes de continuar.');
       return;
     }
     setState(() => _loading = true);
     try {
-      final data = <String, dynamic>{
-        'full_name': _nameCtrl.text.trim(),
-        'type': _userType,
-        'location': {
-          'lat': _location!.latitude,
-          'lng': _location!.longitude,
-        },
-      };
-      if (_userType == 'provider') {
-        data['cpf_cnpj'] = _cpfCtrl.text.trim();
-      }
       await Supabase.instance.client.auth.signUp(
         email: _emailCtrl.text.trim(),
         password: _passCtrl.text,
-        data: data,
+        data: {
+          'full_name': _nameCtrl.text.trim(),
+          'type': _userType,
+          'cpf_cnpj': _cpfCtrl.text.trim(),
+          'location': {
+            'lat': _location!.latitude,
+            'lng': _location!.longitude,
+          },
+        },
       );
       _showSuccess('Conta criada! Verifique seu e-mail.');
     } on AuthException catch (e) {
@@ -375,7 +449,7 @@ class _RegisterFormState extends State<_RegisterForm> {
   void _showSuccess(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(msg),
-      backgroundColor: const Color(0xFF22C55E),
+      backgroundColor: _kGreen,
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
     ));
@@ -391,9 +465,7 @@ class _RegisterFormState extends State<_RegisterForm> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // ── Tipo de usuário ────────────────────────────────────────────
-            const Text('Você é…',
-                style: TextStyle(
-                    color: _kMuted, fontSize: 12, fontWeight: FontWeight.w600)),
+            const _FieldLabel(text: 'Você é…'),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -413,14 +485,23 @@ class _RegisterFormState extends State<_RegisterForm> {
               ],
             ),
             const SizedBox(height: 18),
+
+            // ── Nome completo ──────────────────────────────────────────────
             _Field(
               controller: _nameCtrl,
               label: 'Nome completo',
               hint: 'João da Silva',
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Informe seu nome' : null,
+              validator: (v) {
+                if (v == null || v.trim().isEmpty) return 'Informe seu nome';
+                if (v.trim().split(' ').length < 2) {
+                  return 'Informe nome e sobrenome';
+                }
+                return null;
+              },
             ),
             const SizedBox(height: 14),
+
+            // ── E-mail ─────────────────────────────────────────────────────
             _Field(
               controller: _emailCtrl,
               label: 'E-mail',
@@ -429,6 +510,8 @@ class _RegisterFormState extends State<_RegisterForm> {
               validator: _validateEmail,
             ),
             const SizedBox(height: 14),
+
+            // ── Senha ──────────────────────────────────────────────────────
             _Field(
               controller: _passCtrl,
               label: 'Senha',
@@ -442,38 +525,261 @@ class _RegisterFormState extends State<_RegisterForm> {
                 ),
                 onPressed: () => setState(() => _obscure = !_obscure),
               ),
-              validator: (v) =>
-                  (v == null || v.length < 6) ? 'Mínimo 6 caracteres' : null,
+              validator: _validatePassword,
             ),
-            // ── CPF/CNPJ apenas para provider ─────────────────────────────
-            if (_userType == 'provider') ...[
-              const SizedBox(height: 14),
-              _Field(
-                controller: _cpfCtrl,
-                label: 'CPF / CNPJ',
-                hint: '000.000.000-00',
-                keyboardType: TextInputType.number,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  _CpfCnpjFormatter(),
-                ],
-                validator: (v) {
-                  if (v == null || v.isEmpty) return 'Informe CPF ou CNPJ';
-                  final digits = v.replaceAll(RegExp(r'\D'), '');
-                  if (digits.length != 11 && digits.length != 14) {
-                    return 'CPF (11 dígitos) ou CNPJ (14 dígitos)';
-                  }
-                  return null;
-                },
-              ),
-            ],
             const SizedBox(height: 14),
-            // ── Localização ───────────────────────────────────────────────
-            _LocationButton(
-              location: _location,
-              loading: _fetchingLocation,
-              onTap: _fetchLocation,
+
+            // ── Confirmar senha ────────────────────────────────────────────
+            _Field(
+              controller: _confirmPassCtrl,
+              label: 'Confirmar senha',
+              hint: '••••••••',
+              obscure: _obscureConfirm,
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _obscureConfirm ? Icons.visibility_off : Icons.visibility,
+                  color: _kMuted,
+                  size: 20,
+                ),
+                onPressed: () =>
+                    setState(() => _obscureConfirm = !_obscureConfirm),
+              ),
+              validator: (v) {
+                if (v == null || v.isEmpty) return 'Confirme sua senha';
+                if (v != _passCtrl.text) return 'As senhas não coincidem';
+                return null;
+              },
             ),
+            const SizedBox(height: 14),
+
+            // ── CPF / CNPJ (obrigatório para todos) ───────────────────────
+            _Field(
+              controller: _cpfCtrl,
+              label: _userType == 'provider' ? 'CPF / CNPJ' : 'CPF',
+              hint: _userType == 'provider'
+                  ? '000.000.000-00 ou 00.000.000/0000-00'
+                  : '000.000.000-00',
+              keyboardType: TextInputType.number,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                _CpfCnpjFormatter(),
+              ],
+              validator: (v) {
+                if (v == null || v.isEmpty) {
+                  return _userType == 'provider'
+                      ? 'Informe CPF ou CNPJ'
+                      : 'Informe seu CPF';
+                }
+                final digits = v.replaceAll(RegExp(r'\D'), '');
+                if (_userType == 'requester' && digits.length != 11) {
+                  return 'CPF deve ter 11 dígitos';
+                }
+                if (_userType == 'provider' &&
+                    digits.length != 11 &&
+                    digits.length != 14) {
+                  return 'CPF (11 dígitos) ou CNPJ (14 dígitos)';
+                }
+                if (digits.length == 11 && !_isValidCpf(digits)) {
+                  return 'CPF inválido';
+                }
+                if (digits.length == 14 && !_isValidCnpj(digits)) {
+                  return 'CNPJ inválido';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 14),
+
+            // ── Localização ────────────────────────────────────────────────
+            const _FieldLabel(text: 'Localização'),
+            const SizedBox(height: 8),
+
+            // Toggle automático / manual
+            Container(
+              decoration: BoxDecoration(
+                color: _kCard,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _kBorder),
+              ),
+              child: Row(
+                children: [
+                  _LocationModeTab(
+                    label: 'Automática',
+                    icon: Icons.my_location,
+                    selected: !_manualMode,
+                    onTap: () => setState(() {
+                      _manualMode = false;
+                      _location = null;
+                      _resolvedAddress = null;
+                      _geocodingResults = [];
+                      _placemarks = [];
+                    }),
+                  ),
+                  _LocationModeTab(
+                    label: 'Por endereço',
+                    icon: Icons.search,
+                    selected: _manualMode,
+                    onTap: () => setState(() {
+                      _manualMode = true;
+                      _location = null;
+                      _resolvedAddress = null;
+                    }),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            if (!_manualMode) ...[
+              // ── Localização automática ───────────────────────────────────
+              _LocationStatusCard(
+                location: _location,
+                address: _resolvedAddress,
+                loading: _fetchingLocation,
+                onTap: _fetchAutoLocation,
+                idleLabel: 'Usar minha localização atual',
+                idleIcon: Icons.location_off_outlined,
+              ),
+            ] else ...[
+              // ── Busca por endereço ────────────────────────────────────────
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _addressCtrl,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: 'Rua, bairro, cidade…',
+                        hintStyle:
+                            const TextStyle(color: _kMuted, fontSize: 14),
+                        filled: true,
+                        fillColor: _kCard,
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 14),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: _kBorder),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: _kBorder),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide:
+                              const BorderSide(color: _kAccent, width: 1.5),
+                        ),
+                      ),
+                      onFieldSubmitted: (_) => _searchAddress(),
+                      textInputAction: TextInputAction.search,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  SizedBox(
+                    height: 48,
+                    width: 48,
+                    child: ElevatedButton(
+                      onPressed: _geocoding ? null : _searchAddress,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _kAccent,
+                        foregroundColor: _kPrimary,
+                        disabledBackgroundColor: _kAccent.withOpacity(0.4),
+                        elevation: 0,
+                        padding: EdgeInsets.zero,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: _geocoding
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: _kPrimary),
+                            )
+                          : const Icon(Icons.search, size: 20),
+                    ),
+                  ),
+                ],
+              ),
+
+              // ── Resultados do geocoding ───────────────────────────────────
+              if (_geocodingResults.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Container(
+                  decoration: BoxDecoration(
+                    color: _kCard,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: _kBorder),
+                  ),
+                  child: Column(
+                    children: List.generate(_geocodingResults.length, (i) {
+                      final pm = _placemarks[i];
+                      final label = _formatPlacemark(pm);
+                      final isLast = i == _geocodingResults.length - 1;
+                      return InkWell(
+                        onTap: () => _selectGeocodingResult(i),
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            border: isLast
+                                ? null
+                                : const Border(
+                                    bottom:
+                                        BorderSide(color: _kBorder, width: 1)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.location_on_outlined,
+                                  size: 16, color: _kMuted),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  label.isNotEmpty ? label : 'Endereço encontrado',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                              const Icon(Icons.chevron_right,
+                                  size: 16, color: _kMuted),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+              ],
+
+              // ── Endereço confirmado ───────────────────────────────────────
+              if (_location != null && _geocodingResults.isEmpty) ...[
+                const SizedBox(height: 10),
+                _LocationStatusCard(
+                  location: _location,
+                  address: _resolvedAddress,
+                  loading: false,
+                  onTap: () => setState(() {
+                    _location = null;
+                    _resolvedAddress = null;
+                    _addressCtrl.clear();
+                  }),
+                  idleLabel: '',
+                  idleIcon: Icons.location_off_outlined,
+                  isConfirmed: true,
+                ),
+              ],
+            ],
+
             const SizedBox(height: 28),
             _PrimaryButton(
               label: 'Criar conta',
@@ -487,7 +793,134 @@ class _RegisterFormState extends State<_RegisterForm> {
   }
 }
 
-// ─── Chips de tipo ────────────────────────────────────────────────────────────
+// ─── Card de status de localização ───────────────────────────────────────────
+class _LocationStatusCard extends StatelessWidget {
+  final LatLng? location;
+  final String? address;
+  final bool loading;
+  final VoidCallback onTap;
+  final String idleLabel;
+  final IconData idleIcon;
+  final bool isConfirmed;
+
+  const _LocationStatusCard({
+    required this.location,
+    required this.address,
+    required this.loading,
+    required this.onTap,
+    required this.idleLabel,
+    required this.idleIcon,
+    this.isConfirmed = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasLocation = location != null;
+    return GestureDetector(
+      onTap: loading ? null : onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: hasLocation ? _kGreenBg : _kCard,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: hasLocation ? _kGreen : _kBorder),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              hasLocation ? Icons.location_on : idleIcon,
+              size: 18,
+              color: hasLocation ? _kGreen : _kMuted,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: loading
+                  ? const Text('Obtendo localização…',
+                      style: TextStyle(color: _kMuted, fontSize: 14))
+                  : Text(
+                      hasLocation
+                          ? (address ?? 'Localização confirmada')
+                          : idleLabel,
+                      style: TextStyle(
+                        color: hasLocation ? _kGreen : _kMuted,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+            ),
+            const SizedBox(width: 8),
+            if (loading)
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: _kMuted),
+              )
+            else
+              Icon(
+                isConfirmed ? Icons.close : Icons.chevron_right,
+                color: hasLocation ? _kGreen : _kMuted,
+                size: 18,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Tab de modo de localização ───────────────────────────────────────────────
+class _LocationModeTab extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _LocationModeTab({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? _kAccent : Colors.transparent,
+            borderRadius: BorderRadius.circular(11),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 14, color: selected ? _kPrimary : _kMuted),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: selected ? _kPrimary : _kMuted,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Chips de tipo de usuário ─────────────────────────────────────────────────
 class _TypeChip extends StatelessWidget {
   final String label;
   final IconData icon;
@@ -520,9 +953,7 @@ class _TypeChip extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon,
-                  size: 18,
-                  color: selected ? _kPrimary : _kMuted),
+              Icon(icon, size: 18, color: selected ? _kPrimary : _kMuted),
               const SizedBox(width: 8),
               Text(
                 label,
@@ -540,81 +971,20 @@ class _TypeChip extends StatelessWidget {
   }
 }
 
-// ─── Botão de localização ─────────────────────────────────────────────────────
-class _LocationButton extends StatelessWidget {
-  final LatLng? location;
-  final bool loading;
-  final VoidCallback onTap;
-
-  const _LocationButton({
-    required this.location,
-    required this.loading,
-    required this.onTap,
-  });
+// ─── Label de campo ───────────────────────────────────────────────────────────
+class _FieldLabel extends StatelessWidget {
+  final String text;
+  const _FieldLabel({required this.text});
 
   @override
   Widget build(BuildContext context) {
-    final hasLocation = location != null;
-    return GestureDetector(
-      onTap: loading ? null : onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: hasLocation
-              ? const Color(0xFF0D2B0D)
-              : _kCard,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: hasLocation
-                ? const Color(0xFF22C55E)
-                : _kBorder,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              hasLocation ? Icons.location_on : Icons.location_off_outlined,
-              size: 18,
-              color: hasLocation
-                  ? const Color(0xFF22C55E)
-                  : _kMuted,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: loading
-                  ? const Text('Obtendo localização…',
-                      style: TextStyle(color: _kMuted, fontSize: 14))
-                  : Text(
-                      hasLocation
-                          ? 'Localização obtida (${location!.latitude.toStringAsFixed(4)}, ${location!.longitude.toStringAsFixed(4)})'
-                          : 'Usar minha localização atual',
-                      style: TextStyle(
-                        color: hasLocation
-                            ? const Color(0xFF22C55E)
-                            : _kMuted,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-            ),
-            if (loading)
-              const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: _kMuted,
-                ),
-              )
-            else
-              Icon(
-                Icons.chevron_right,
-                color: hasLocation ? const Color(0xFF22C55E) : _kMuted,
-                size: 18,
-              ),
-          ],
-        ),
+    return Text(
+      text,
+      style: const TextStyle(
+        color: _kMuted,
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.4,
       ),
     );
   }
@@ -647,15 +1017,7 @@ class _Field extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: _kMuted,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.4,
-          ),
-        ),
+        _FieldLabel(text: label),
         const SizedBox(height: 6),
         TextFormField(
           controller: controller,
@@ -754,7 +1116,7 @@ class _PrimaryButton extends StatelessWidget {
   }
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Helpers & Validadores ────────────────────────────────────────────────────
 String? _validateEmail(String? v) {
   if (v == null || v.isEmpty) return 'Informe seu e-mail';
   final re = RegExp(r'^[\w\.\+\-]+@[\w\-]+\.\w{2,}$');
@@ -762,7 +1124,52 @@ String? _validateEmail(String? v) {
   return null;
 }
 
-/// Formata automaticamente CPF (000.000.000-00) ou CNPJ (00.000.000/0000-00)
+String? _validatePassword(String? v) {
+  if (v == null || v.isEmpty) return 'Informe uma senha';
+  if (v.length < 8) return 'Mínimo 8 caracteres';
+  if (!RegExp(r'[A-Z]').hasMatch(v)) return 'Inclua ao menos uma letra maiúscula';
+  if (!RegExp(r'[0-9]').hasMatch(v)) return 'Inclua ao menos um número';
+  return null;
+}
+
+bool _isValidCpf(String digits) {
+  if (RegExp(r'^(\d)\1{10}$').hasMatch(digits)) return false;
+  int sum = 0;
+  for (int i = 0; i < 9; i++) {
+    sum += int.parse(digits[i]) * (10 - i);
+  }
+  int remainder = (sum * 10) % 11;
+  if (remainder == 10 || remainder == 11) remainder = 0;
+  if (remainder != int.parse(digits[9])) return false;
+  sum = 0;
+  for (int i = 0; i < 10; i++) {
+    sum += int.parse(digits[i]) * (11 - i);
+  }
+  remainder = (sum * 10) % 11;
+  if (remainder == 10 || remainder == 11) remainder = 0;
+  return remainder == int.parse(digits[10]);
+}
+
+bool _isValidCnpj(String digits) {
+  if (RegExp(r'^(\d)\1{13}$').hasMatch(digits)) return false;
+  const weights1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+  const weights2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+  int sum = 0;
+  for (int i = 0; i < 12; i++) {
+    sum += int.parse(digits[i]) * weights1[i];
+  }
+  int remainder = sum % 11;
+  int d1 = remainder < 2 ? 0 : 11 - remainder;
+  if (d1 != int.parse(digits[12])) return false;
+  sum = 0;
+  for (int i = 0; i < 13; i++) {
+    sum += int.parse(digits[i]) * weights2[i];
+  }
+  remainder = sum % 11;
+  int d2 = remainder < 2 ? 0 : 11 - remainder;
+  return d2 == int.parse(digits[13]);
+}
+
 class _CpfCnpjFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
@@ -771,15 +1178,11 @@ class _CpfCnpjFormatter extends TextInputFormatter {
   ) {
     final digits = newValue.text.replaceAll(RegExp(r'\D'), '');
     String formatted;
-
     if (digits.length <= 11) {
-      // CPF: 000.000.000-00
       formatted = _applyCpfMask(digits);
     } else {
-      // CNPJ: 00.000.000/0000-00
       formatted = _applyCnpjMask(digits.substring(0, 14));
     }
-
     return TextEditingValue(
       text: formatted,
       selection: TextSelection.collapsed(offset: formatted.length),
