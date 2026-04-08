@@ -24,4 +24,33 @@ class RequestsRepositoryImpl implements RequestsRepository {
       return requestDistance <= radiusKm;
     }).toList(growable: false);
   }
+
+  @override
+  Future<List<RequestEntity>> getCurrentUserOpenRequests() {
+    return _remoteDataSource.getCurrentUserOpenRequests();
+  }
+
+  @override
+  Future<void> updateCurrentUserRequest({
+    required String requestId,
+    required String title,
+    String? description,
+    String? budgetRange,
+    required bool isRemote,
+  }) {
+    return _remoteDataSource.updateCurrentUserRequest(
+      requestId: requestId,
+      title: title,
+      description: description,
+      budgetRange: budgetRange,
+      isRemote: isRemote,
+    );
+  }
+
+  @override
+  Future<void> deleteCurrentUserRequest({
+    required String requestId,
+  }) {
+    return _remoteDataSource.deleteCurrentUserRequest(requestId: requestId);
+  }
 }
