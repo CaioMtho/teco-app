@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../data/datasources/requests_remote_datasource.dart';
@@ -11,21 +12,14 @@ import '../../domain/usecases/get_nearby_open_requests_usecase.dart';
 
 class RequestsMapPage extends StatefulWidget {
   const RequestsMapPage({super.key});
-  //const _RequestsFormPage = RequestsFormPage();
 
   @override
   State<RequestsMapPage> createState() => _RequestsMapPageState();
-  //State<_RequestsFormPage> createState() => _RequestsFormPageState();
 }
 
 class _RequestsMapPageState extends State<RequestsMapPage> {
-  final FocusNode _focusNode = FocusNode();
-
-  final TextEditingController _controller = TextEditingController();
-
-  String? _submittedText; 
-
   final MapController _mapController = MapController();
+
   final GetNearbyOpenRequestsUseCase _getNearbyOpenRequestsUseCase =
       GetNearbyOpenRequestsUseCase(
         RequestsRepositoryImpl(RequestsRemoteDataSource()),
@@ -41,13 +35,6 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
   void initState() {
     super.initState();
     _loadMapData();
-  }
-
-  @override
-  void dispose() {
-    _focusNode.dispose();
-    _controller.dispose();
-    super.dispose();
   }
 
   void _onRequestMarkerTap(RequestEntity request) {
@@ -89,25 +76,24 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
 
     try {
       final mainLocation = await _resolveMainLocation();
+
       final openRequests = await _getNearbyOpenRequestsUseCase.call(
         center: mainLocation,
         radiusKm: AppConstants.openRequestsRadiusKm,
       );
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       setState(() {
         _mainLocation = mainLocation;
         _openRequests = openRequests;
       });
 
-      _mapController.move(_mainLocation, 12.5);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _mapController.move(_mainLocation, 12.5);
+      });
     } catch (_) {
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       setState(() {
         _errorMessage =
@@ -178,7 +164,7 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
                     point: _mainLocation,
                     radius: AppConstants.openRequestsRadiusKm * 1000,
                     useRadiusInMeter: true,
-                    color: colorScheme.primary.withValues(alpha: 0.14),
+                    color: colorScheme.primary.withOpacity(0.14),
                     borderColor: colorScheme.primary,
                     borderStrokeWidth: 1,
                   ),
@@ -207,8 +193,6 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
               minimum: const EdgeInsets.fromLTRB(16, 0, 16, 12),
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 240),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
                 child: _selectedRequest == null
                     ? const _BottomBar(key: ValueKey('bottom-bar'))
                     : _RequestDetailsModal(
@@ -247,15 +231,11 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
       ),
       floatingActionButton: Padding(
         padding: EdgeInsets.only(bottom: _selectedRequest != null ? 238 : 86),
-        child: Tooltip(
-          message: 'Voltar para sua localizacao',
-          child: FloatingActionButton.small(
-            hoverElevation: 10,
-            onPressed: () {
-              _mapController.move(_mainLocation, 13.5);
-            },
-            child: const Icon(Icons.my_location_rounded),
-          ),
+        child: FloatingActionButton.small(
+          onPressed: () {
+            _mapController.move(_mainLocation, 13.5);
+          },
+          child: const Icon(Icons.my_location_rounded),
         ),
       ),
     );
@@ -273,13 +253,6 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
             color: colorScheme.primary,
             shape: BoxShape.circle,
             border: Border.all(color: Colors.white, width: 3),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x55000000),
-                blurRadius: 12,
-                offset: Offset(0, 4),
-              ),
-            ],
           ),
           child: const Icon(
             Icons.person_pin_circle_rounded,
@@ -347,23 +320,6 @@ class _TopBar extends StatelessWidget {
               onTap: () {},
               color: colorScheme.onPrimary,
             ),
-            const SizedBox(width: 10),
-            _TopBarAction(
-              tooltip: 'Perfil',
-              onTap: () {},
-              color: colorScheme.onPrimary,
-              child: CircleAvatar(
-                radius: 12,
-                backgroundColor: const Color(0xFF9A7BFF),
-                child: Text(
-                  'A',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
           ],
         ),
       ),
@@ -385,16 +341,39 @@ class _BottomBar extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: const [
-            _BottomIcon(icon: Icons.add_outlined, label: 'suporte'),
+          children: [
+            _BottomIcon(
+              icon: Icons.add_outlined,
+              label: 'suporte',
+              onTap: () {
+                // futuro
+              },
+            ),
             _BottomIcon(
               icon: Icons.home_rounded,
               label: 'inicio',
               selected: true,
+              onTap: () => context.go('/'),
             ),
-            _BottomIcon(icon: Icons.radio_button_checked, label: 'requisicoes'),
-            _BottomIcon(icon: Icons.person_outline_rounded, label: 'perfil'),
-            _BottomIcon(icon: Icons.settings_outlined, label: 'configuracao'),
+            _BottomIcon(
+              icon: Icons.radio_button_checked,
+              label: 'requisicoes',
+              onTap: () {
+                // já está aqui
+              },
+            ),
+            _BottomIcon(
+              icon: Icons.person_outline_rounded,
+              label: 'perfil',
+              onTap: () => context.push('/profile'),
+            ),
+            _BottomIcon(
+              icon: Icons.settings_outlined,
+              label: 'configuracao',
+              onTap: () {
+                // futuro
+              },
+            ),
           ],
         ),
       ),
@@ -407,43 +386,33 @@ class _BottomIcon extends StatelessWidget {
     required this.icon,
     required this.label,
     this.selected = false,
+    this.onTap,
   });
 
   final IconData icon;
   final String label;
   final bool selected;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final iconColor = selected ? const Color(0xFF9A7BFF) : Colors.white70;
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () {},
-        borderRadius: BorderRadius.circular(14),
-        hoverColor: Colors.white10,
-        child: SizedBox(
-          width: 72,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, color: iconColor, size: 20),
-                const SizedBox(height: 3),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.labelSmall?.copyWith(color: iconColor),
-                ),
-              ],
-            ),
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: iconColor, size: 20),
+          const SizedBox(height: 3),
+          Text(
+            label,
+            style: Theme.of(context)
+                .textTheme
+                .labelSmall
+                ?.copyWith(color: iconColor),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -455,32 +424,21 @@ class _TopBarAction extends StatelessWidget {
     required this.onTap,
     required this.color,
     this.icon,
-    this.child,
-  }) : assert(icon != null || child != null);
+  });
 
   final String tooltip;
   final VoidCallback onTap;
   final Color color;
   final IconData? icon;
-  final Widget? child;
 
   @override
   Widget build(BuildContext context) {
-    final button = InkResponse(
-      onTap: onTap,
-      radius: 20,
-      hoverColor: Colors.white10,
-      highlightShape: BoxShape.circle,
-      child: SizedBox(
-        width: 32,
-        height: 32,
-        child: Center(child: child ?? Icon(icon, color: color)),
-      ),
-    );
-
     return Tooltip(
       message: tooltip,
-      child: Material(color: Colors.transparent, child: button),
+      child: InkResponse(
+        onTap: onTap,
+        child: Icon(icon, color: color),
+      ),
     );
   }
 }
@@ -497,67 +455,29 @@ class _RequestDetailsModal extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     final description = request.description?.trim();
 
     return Material(
-      elevation: 10,
       color: const Color(0xFF222431),
       borderRadius: BorderRadius.circular(24),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        padding: const EdgeInsets.all(16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    request.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Tooltip(
-                  message: 'Fechar',
-                  child: IconButton(
-                    onPressed: onClose,
-                    icon: const Icon(Icons.close_rounded),
-                    color: Colors.white,
-                    hoverColor: Colors.white10,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
+            Text(request.title),
             Text(
-              description != null && description.isNotEmpty
-                  ? description
-                  : 'Sem descricao para esta requisicao.',
-              maxLines: 4,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: Colors.white70),
+              description?.isNotEmpty == true
+                  ? description!
+                  : 'Sem descricao',
             ),
-            const SizedBox(height: 14),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: FilledButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.chat_bubble_outline_rounded),
-                label: const Text('Criar chat'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: colorScheme.primary,
-                  foregroundColor: colorScheme.onPrimary,
-                ),
-              ),
+            IconButton(
+              onPressed: onClose,
+              icon: const Icon(Icons.close),
             ),
-            Expanded(
-              child: Cent
+          ],
+        ),
+      ),
+    );
+  }
+}
