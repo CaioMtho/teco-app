@@ -15,7 +15,7 @@ class RequestsRemoteDataSource {
   Future<List<RequestEntity>> getCurrentUserOpenRequests() async {
     final userId = SupabaseService.client.auth.currentUser?.id;
     if (userId == null) {
-      return const [];
+      throw StateError('No authenticated user found to load requests');
     }
 
     final response = await SupabaseService.client.rpc('list_requests_with_geojson');
