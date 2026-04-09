@@ -69,6 +69,35 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  Future<void> _logout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Sair da conta'),
+        content: const Text('Tem certeza que deseja encerrar sua sessão?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Sair'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    Navigator.of(context).popUntil((route) => route.isFirst);
+
+    await SupabaseService.client.auth.signOut();
+  }
+
   Future<void> _openEditSheet() async {
     final profile = _profile;
     if (profile == null) {
@@ -235,6 +264,16 @@ class _ProfilePageState extends State<ProfilePage> {
                                 icon: const Icon(Icons.edit_rounded),
                                 label: const Text('Editar informacoes'),
                               ),
+                              const SizedBox(height: 22),
+                              OutlinedButton.icon
+                              (onPressed: _logout,
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.redAccent,
+                                side: const BorderSide(color: Colors.redAccent),
+                              ),
+                              icon: const Icon(Icons.logout_rounded),
+                              label: const Text('Sair da conta'),
+                              )
                             ],
                           ],
                         ),
