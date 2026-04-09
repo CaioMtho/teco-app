@@ -14,6 +14,7 @@ import '../../domain/usecases/get_current_user_open_requests_usecase.dart';
 import '../../domain/entities/request_entity.dart';
 import '../../domain/usecases/get_nearby_open_requests_usecase.dart';
 import '../../domain/usecases/update_current_user_request_usecase.dart';
+import '../../domain/usecases/create_request_usecase.dart';
 import '../../../main_page/presentation/pages/profile_page.dart';
 
 class RequestsMapPage extends ConsumerStatefulWidget {
@@ -31,6 +32,8 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
     RequestsRemoteDataSource(),
   );
 
+  late final CreateRequestUseCase _createRequestUseCase =
+      CreateRequestUseCase(_requestsRepository);
   late final GetNearbyOpenRequestsUseCase _getNearbyOpenRequestsUseCase =
       GetNearbyOpenRequestsUseCase(_requestsRepository);
   late final GetCurrentUserOpenRequestsUseCase
@@ -116,6 +119,44 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
           _isLoadingMyRequests = false;
         });
       }
+    }
+  }
+
+// Novo método _onCreateRequest:
+Future<void> _onCreateRequest() async {
+  final payload = await showModalBottomSheet<_RequestCreatePayload>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (context) => _CreateRequestSheet(
+      initialLat: _mainLocation.latitude,
+      initialLon: _mainLocation.longitude,
+    ),
+  );
+
+  if (payload == null) return;
+
+  try {
+    await _createRequestUseCase.call(
+      title: payload.title,
+      description: payload.description,
+      budgetRange: payload.budgetRange,
+      isRemote: payload.isRemote,
+      lat: payload.lat,
+      lon: payload.lon,
+    );
+
+    await _loadMapData();
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Requisição criada com sucesso.')),
+    );
+  } catch (_) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Não foi possível criar a requisição.')),
+      );
     }
   }
 
@@ -432,6 +473,7 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
                         },
                         onEdit: _onEditRequest,
                         onDelete: _onDeleteRequest,
+                        onCreateRequest: _onCreateRequest,
                       )
                     : _selectedRequest == null
                     ? _BottomBar(
@@ -837,6 +879,7 @@ class _MyRequestsModal extends StatelessWidget {
     required this.onRefresh,
     required this.onEdit,
     required this.onDelete,
+    required this.onCreateRequest,
   });
 
   final List<RequestEntity> requests;
@@ -845,6 +888,7 @@ class _MyRequestsModal extends StatelessWidget {
   final VoidCallback onRefresh;
   final ValueChanged<RequestEntity> onEdit;
   final ValueChanged<RequestEntity> onDelete;
+  final VoidCallback onCreateRequest;
 
   @override
   Widget build(BuildContext context) {
@@ -872,6 +916,15 @@ class _MyRequestsModal extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
+                  ),
+                  Tooltip(
+                    message: 'Nova requisição',
+                    child: IconButton(
+                      onPressed: onCreateRequest,
+                      icon: const Icon(Icons.add_circle_outline_rounded),
+                      color: Colors.white,
+                      hoverColor: Colors.white10,
+                      ),
                   ),
                   Tooltip(
                     message: 'Atualizar lista',
@@ -1238,6 +1291,175 @@ class _EditRequestSheetState extends State<_EditRequestSheet> {
                 onPressed: _isSaving ? null : _submit,
                 icon: const Icon(Icons.save_outlined),
                 label: const Text('Salvar alteracoes'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RequestCreatePayload {
+  const _RequestCreatePayload({
+    required this.title,
+    required this.description,
+    required this.budgetRange,
+    required this.isRemote,
+    required this.lat,
+    required this.lon,
+  });
+
+  final String title;
+  final String? description;
+  final double? budgetRange;
+  final bool isRemote;
+  final double lat;
+  final double lon;
+}
+
+class _CreateRequestSheet extends StatefulWidget {
+  const _CreateRequestSheet({
+    required this.initialLat,
+    required this.initialLon,
+  });
+
+  final double initialLat;
+  final double initialLon;
+
+  @override
+  State<_CreateRequestSheet> createState() => _CreateRequestSheetState();
+}
+
+class _CreateRequestSheetState extends State<_CreateRequestSheet> {
+  final _titleController = TextEditingController();
+  final _descriptionController = TextEditingController();
+  final _budgetController = TextEditingController();
+  bool _isRemote = false;
+  bool _isSaving = false;
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    _budgetController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final title = _titleController.text.trim();
+    if (title.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Informe um título para a requisição.')),
+      );
+      return;
+    }
+
+    final description = _descriptionController.text.trim();
+    final budgetText = _budgetController.text.trim().replaceAll(',', '.');
+    final budgetRange = budgetText.isNotEmpty ? double.tryParse(budgetText) : null;
+
+    if (budgetText.isNotEmpty && budgetRange == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Informe um valor numérico válido para o orçamento.')),
+      );
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    Navigator.of(context).pop(
+      _RequestCreatePayload(
+        title: title,
+        description: description.isEmpty ? null : description,
+        budgetRange: budgetRange,
+        isRemote: _isRemote,
+        lat: widget.initialLat,
+        lon: widget.initialLon,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Nova requisição',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _titleController,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Título *',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _descriptionController,
+              textInputAction: TextInputAction.newline,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                labelText: 'Descrição',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _budgetController,
+              textInputAction: TextInputAction.done,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Orçamento (R\$)',
+                border: OutlineInputBorder(),
+                hintText: 'Ex.: 500.00',
+              ),
+            ),
+            const SizedBox(height: 8),
+            SwitchListTile.adaptive(
+              value: _isRemote,
+              onChanged: (value) => setState(() => _isRemote = value),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Aceita trabalho remoto'),
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const Icon(Icons.location_on_outlined, size: 14, color: Colors.white38),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    'Localização: ${widget.initialLat.toStringAsFixed(5)}, '
+                    '${widget.initialLon.toStringAsFixed(5)}',
+                    style: Theme.of(context)
+                        .textTheme
+                        .labelSmall
+                        ?.copyWith(color: Colors.white38),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _isSaving ? null : _submit,
+                icon: const Icon(Icons.add_circle_outline_rounded),
+                label: const Text('Criar requisição'),
               ),
             ),
           ],

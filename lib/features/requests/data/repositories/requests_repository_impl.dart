@@ -48,6 +48,25 @@ class RequestsRepositoryImpl implements RequestsRepository {
   }
 
   @override
+  Future<void> createRequest({
+    required String title,
+    String? description,
+    double? budgetRange,
+    bool isRemote = false,
+    required double lat,
+    required double lon,
+  }) async {
+    await _remoteDataSource.createRequest(
+      title: title,
+      description: description,
+      budgetRange: budgetRange,
+      isRemote: isRemote,
+      lat: lat,
+      lon: lon,
+    );
+  }
+
+  @override
   Future<void> deleteCurrentUserRequest({
     required String requestId,
   }) {

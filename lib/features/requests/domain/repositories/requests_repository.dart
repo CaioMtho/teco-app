@@ -18,6 +18,15 @@ abstract class RequestsRepository {
     required bool isRemote,
   });
 
+  Future<void> createRequest({
+  required String title,
+  String? description,
+  double? budgetRange,
+  bool isRemote = false,
+  required double lat,
+  required double lon,
+  });
+
   Future<void> deleteCurrentUserRequest({
     required String requestId,
   });
