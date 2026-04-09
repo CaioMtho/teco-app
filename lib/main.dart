@@ -1,84 +1,57 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'app.dart';
 import 'core/services/supabase_service.dart';
-import 'features/auth/presentation/pages/auth_screen.dart'; // ajuste o caminho conforme sua estrutura
+import 'features/auth/presentation/pages/auth_screen.dart';
+import 'features/auth/presentation/providers/auth_providers.dart';
+import 'features/requests/presentation/pages/requests_map_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: '.env');
   await SupabaseService.initialize();
-  runApp(const MyApp());
+  runApp(const ProviderScope(child: MyApp()));
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends ConsumerWidget {
   const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return MaterialApp(
       title: 'Meu App',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: const _AuthGate(),
+      home: const AuthGate(),
     );
   }
 }
 
-/// Decide qual tela mostrar com base na sessão atual do Supabase.
-/// Usa [onAuthStateChange] para reagir a login/logout em tempo real.
-class _AuthGate extends StatelessWidget {
-  const _AuthGate();
+class AuthGate extends ConsumerWidget {
+  const AuthGate({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<AuthState>(
-      stream: Supabase.instance.client.auth.onAuthStateChange,
-      builder: (context, snapshot) {
-        // Enquanto aguarda o primeiro evento
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            backgroundColor: Color(0xFF0A0A0A),
-            body: Center(
-              child: CircularProgressIndicator(color: Color(0xFFD4FF00)),
-            ),
-          );
-        }
+  Widget build(BuildContext context, WidgetRef ref) {
+    final authStateAsync = ref.watch(authControllerProvider);
 
-        final session = snapshot.data?.session;
-
-        if (session != null) {
-          // Usuário autenticado → substitua por sua tela principal
-          return const MyHomePage();
-        }
-
-        return const AuthScreen();
-      },
-    );
-  }
-}
-
-// ─── Placeholder da Home (substitua pela sua tela real) ───────────────────────
-class MyHomePage extends StatelessWidget {
-  const MyHomePage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Home'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () => Supabase.instance.client.auth.signOut(),
-          ),
-        ],
+    return authStateAsync.when(
+      loading: () => const Scaffold(
+        backgroundColor: Color(0xFF0A0A0A),
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFFD4FF00)),
+        ),
       ),
-      body: const Center(child: Text('Bem-vindo!')),
+      error: (_, __) => const AuthScreen(),
+      data: (authState) {
+        if (authState.isAuthenticated) {
+          return const RequestsMapPage();
+        }
+
+        return AuthScreen(initialMessage: authState.message);
+      },
     );
   }
 }

@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../domain/entities/auth_sign_up_payload.dart';
+import '../providers/auth_providers.dart';
 
 // ─── Paleta & Tema ────────────────────────────────────────────────────────────
 const _kPrimary = Color(0xFF0A0A0A);
@@ -16,7 +20,12 @@ const _kGreen = Color(0xFF22C55E);
 const _kGreenBg = Color(0xFF0D2B0D);
 
 class AuthScreen extends StatefulWidget {
-  const AuthScreen({super.key});
+  const AuthScreen({
+    super.key,
+    this.initialMessage,
+  });
+
+  final String? initialMessage;
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
@@ -31,6 +40,24 @@ class _AuthScreenState extends State<AuthScreen>
     super.initState();
     _tab = TabController(length: 2, vsync: this);
     _tab.addListener(() => setState(() {}));
+
+    final initialMessage = widget.initialMessage?.trim();
+    if (initialMessage != null && initialMessage.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(initialMessage),
+            backgroundColor: _kError,
+            behavior: SnackBarBehavior.floating,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+      });
+    }
   }
 
   @override
@@ -144,14 +171,14 @@ class _TabSelector extends StatelessWidget {
 }
 
 // ─── Login Form ───────────────────────────────────────────────────────────────
-class _LoginForm extends StatefulWidget {
+class _LoginForm extends ConsumerStatefulWidget {
   const _LoginForm();
 
   @override
-  State<_LoginForm> createState() => _LoginFormState();
+  ConsumerState<_LoginForm> createState() => _LoginFormState();
 }
 
-class _LoginFormState extends State<_LoginForm> {
+class _LoginFormState extends ConsumerState<_LoginForm> {
   final _formKey = GlobalKey<FormState>();
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
@@ -162,13 +189,12 @@ class _LoginFormState extends State<_LoginForm> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
     try {
-      await Supabase.instance.client.auth.signInWithPassword(
+      await ref.read(authControllerProvider.notifier).signIn(
         email: _emailCtrl.text.trim(),
         password: _passCtrl.text,
       );
-      // Navigator.of(context).pushReplacement(...)
-    } on AuthException catch (e) {
-      _showError(e.message);
+    } on AuthException catch (error) {
+      _showError(error.message);
     } catch (_) {
       _showError('Erro inesperado. Tente novamente.');
     } finally {
@@ -253,14 +279,14 @@ class _LoginFormState extends State<_LoginForm> {
 }
 
 // ─── Register Form ────────────────────────────────────────────────────────────
-class _RegisterForm extends StatefulWidget {
+class _RegisterForm extends ConsumerStatefulWidget {
   const _RegisterForm();
 
   @override
-  State<_RegisterForm> createState() => _RegisterFormState();
+  ConsumerState<_RegisterForm> createState() => _RegisterFormState();
 }
 
-class _RegisterFormState extends State<_RegisterForm> {
+class _RegisterFormState extends ConsumerState<_RegisterForm> {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
@@ -414,22 +440,19 @@ class _RegisterFormState extends State<_RegisterForm> {
     }
     setState(() => _loading = true);
     try {
-      await Supabase.instance.client.auth.signUp(
-        email: _emailCtrl.text.trim(),
-        password: _passCtrl.text,
-        data: {
-          'full_name': _nameCtrl.text.trim(),
-          'type': _userType,
-          'cpf_cnpj': _cpfCtrl.text.trim(),
-          'location': {
-            'lat': _location!.latitude,
-            'lng': _location!.longitude,
-          },
-        },
+      await ref.read(authControllerProvider.notifier).signUp(
+        AuthSignUpPayload(
+          fullName: _nameCtrl.text.trim(),
+          email: _emailCtrl.text.trim(),
+          password: _passCtrl.text,
+          userType: _userType,
+          cpfCnpj: _cpfCtrl.text.trim(),
+          location: _location!,
+        ),
       );
       _showSuccess('Conta criada! Verifique seu e-mail.');
-    } on AuthException catch (e) {
-      _showError(e.message);
+    } on AuthException catch (error) {
+      _showError(error.message);
     } catch (_) {
       _showError('Erro inesperado. Tente novamente.');
     } finally {

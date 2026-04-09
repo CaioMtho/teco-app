@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../../../core/constants/app_constants.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../data/datasources/requests_remote_datasource.dart';
 import '../../data/repositories/requests_repository_impl.dart';
 import '../../domain/repositories/requests_repository.dart';
@@ -14,14 +16,16 @@ import '../../domain/usecases/get_nearby_open_requests_usecase.dart';
 import '../../domain/usecases/update_current_user_request_usecase.dart';
 import '../../../main_page/presentation/pages/profile_page.dart';
 
-class RequestsMapPage extends StatefulWidget {
+class RequestsMapPage extends ConsumerStatefulWidget {
   const RequestsMapPage({super.key});
 
   @override
-  State<RequestsMapPage> createState() => _RequestsMapPageState();
+  ConsumerState<RequestsMapPage> createState() => _RequestsMapPageState();
 }
 
-class _RequestsMapPageState extends State<RequestsMapPage> {
+class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
+  static const LatLng _defaultMapCenter = LatLng(-23.55052, -46.633308);
+
   final MapController _mapController = MapController();
   final RequestsRepository _requestsRepository = RequestsRepositoryImpl(
     RequestsRemoteDataSource(),
@@ -38,7 +42,7 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
   late final DeleteCurrentUserRequestUseCase _deleteCurrentUserRequestUseCase =
       DeleteCurrentUserRequestUseCase(_requestsRepository);
 
-  LatLng _mainLocation = AppConstants.testUserFallbackLocation;
+  LatLng _mainLocation = const LatLng(0, 0);
   List<RequestEntity> _openRequests = const [];
   List<RequestEntity> _currentUserOpenRequests = const [];
   RequestEntity? _selectedRequest;
@@ -238,10 +242,18 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
 
     try {
       final mainLocation = await _resolveMainLocation();
-      final openRequests = await _getNearbyOpenRequestsUseCase.call(
-        center: mainLocation,
-        radiusKm: AppConstants.openRequestsRadiusKm,
-      );
+      String? nonBlockingErrorMessage;
+
+      List<RequestEntity> openRequests = const [];
+      try {
+        openRequests = await _getNearbyOpenRequestsUseCase.call(
+          center: mainLocation,
+          radiusKm: AppConstants.openRequestsRadiusKm,
+        );
+      } catch (_) {
+        nonBlockingErrorMessage =
+            'Nao foi possível carregar requisições próximas no momento.';
+      }
 
       List<RequestEntity> currentUserOpenRequests = const [];
       try {
@@ -271,6 +283,7 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
         _openRequests = openRequests;
         _currentUserOpenRequests = currentUserOpenRequests;
         _selectedRequest = refreshedSelectedRequest;
+        _errorMessage = nonBlockingErrorMessage;
       });
 
       _mapController.move(_mainLocation, 12.5);
@@ -293,9 +306,24 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
   }
 
   Future<LatLng> _resolveMainLocation() async {
+    final profileLocation =
+        ref.read(authControllerProvider).valueOrNull?.profile?.location;
+    if (profileLocation != null) {
+      return profileLocation;
+    }
+
+    final deviceLocation = await _resolveDeviceLocation();
+    if (deviceLocation != null) {
+      return deviceLocation;
+    }
+
+    return _defaultMapCenter;
+  }
+
+  Future<LatLng?> _resolveDeviceLocation() async {
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      return AppConstants.testUserFallbackLocation;
+      return null;
     }
 
     var permission = await Geolocator.checkPermission();
@@ -306,7 +334,7 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
 
     if (permission == LocationPermission.denied ||
         permission == LocationPermission.deniedForever) {
-      return AppConstants.testUserFallbackLocation;
+      return null;
     }
 
     try {
@@ -318,12 +346,17 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
 
       return LatLng(position.latitude, position.longitude);
     } catch (_) {
-      return AppConstants.testUserFallbackLocation;
+      return null;
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final authState = ref.watch(authControllerProvider).valueOrNull;
+    final profileName = (authState?.profile?.fullName ?? '').trim();
+    final avatarInitial =
+        profileName.isNotEmpty ? profileName.substring(0, 1).toUpperCase() : 'U';
+
     final colorScheme = Theme.of(context).colorScheme;
     final errorBottomPadding = _isMyRequestsPanelOpen
         ? 448.0
@@ -373,7 +406,10 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
               alignment: Alignment.topCenter,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                child: _TopBar(colorScheme: colorScheme),
+                child: _TopBar(
+                  colorScheme: colorScheme,
+                  avatarInitial: avatarInitial,
+                ),
               ),
             ),
           ),
@@ -516,9 +552,13 @@ class _RequestsMapPageState extends State<RequestsMapPage> {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.colorScheme});
+  const _TopBar({
+    required this.colorScheme,
+    required this.avatarInitial,
+  });
 
   final ColorScheme colorScheme;
+  final String avatarInitial;
 
   @override
   Widget build(BuildContext context) {
@@ -557,7 +597,7 @@ class _TopBar extends StatelessWidget {
                 radius: 12,
                 backgroundColor: const Color(0xFF9A7BFF),
                 child: Text(
-                  'A',
+                  avatarInitial,
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
