@@ -27,6 +27,25 @@ class RequestsRemoteDataSource {
         .toList(growable: false);
   }
 
+  Future<void> createRequest({
+    required String title,
+    String? description,
+    double? budgetRange,
+    bool isRemote = false,
+    required double lat,
+    required double lon,
+  }) async {
+    await SupabaseService.client.rpc('create_request_with_location', params: {
+      'p_title': title,
+      'p_description': description,
+      'p_status': 'open',
+      'p_budget_range': budgetRange,
+      'p_is_remote': isRemote,
+      'p_lat': lat,
+      'p_lon': lon,
+    });
+  }
+
   Future<void> updateCurrentUserRequest({
     required String requestId,
     required String title,
