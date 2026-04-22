@@ -93,6 +93,10 @@ class _ProfilePageState extends State<ProfilePage> {
 
     if (confirmed != true) return;
 
+    if (!mounted) {
+      return;
+    }
+
     Navigator.of(context).popUntil((route) => route.isFirst);
 
     await SupabaseService.client.auth.signOut();

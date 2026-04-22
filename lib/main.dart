@@ -44,7 +44,7 @@ class AuthGate extends ConsumerWidget {
           child: CircularProgressIndicator(color: Color(0xFFD4FF00)),
         ),
       ),
-      error: (_, __) => const AuthScreen(),
+      error: (_, _) => const AuthScreen(),
       data: (authState) {
         if (authState.isAuthenticated) {
           return const RequestsMapPage();

@@ -344,10 +344,10 @@ class _RegisterFormState extends ConsumerState<_RegisterForm> {
         return;
       }
       final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        locationSettings:
+            const LocationSettings(accuracy: LocationAccuracy.high),
       );
 
-      // Reverse geocoding para mostrar endereço legível
       final placemarks = await placemarkFromCoordinates(
         pos.latitude,
         pos.longitude,
@@ -711,7 +711,8 @@ class _RegisterFormState extends ConsumerState<_RegisterForm> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: _kAccent,
                         foregroundColor: _kPrimary,
-                        disabledBackgroundColor: _kAccent.withOpacity(0.4),
+                        disabledBackgroundColor:
+                            _kAccent.withValues(alpha: 0.4),
                         elevation: 0,
                         padding: EdgeInsets.zero,
                         shape: RoundedRectangleBorder(
@@ -1111,7 +1112,7 @@ class _PrimaryButton extends StatelessWidget {
         style: ElevatedButton.styleFrom(
           backgroundColor: _kAccent,
           foregroundColor: _kPrimary,
-          disabledBackgroundColor: _kAccent.withOpacity(0.5),
+          disabledBackgroundColor: _kAccent.withValues(alpha: 0.5),
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
