@@ -86,7 +86,7 @@ class _AuthScreenState extends State<AuthScreen>
                       color: _kAccent,
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.bolt, color: _kPrimary, size: 24),
+                    child: const ImageIcon(AssetImage('assets/icon/app_icon.png'), color: _kPrimary, size: 24),
                   ),
                   const SizedBox(height: 32),
                   Text(
