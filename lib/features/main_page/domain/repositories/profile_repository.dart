@@ -1,3 +1,5 @@
+import 'package:latlong2/latlong.dart';
+
 import '../entities/profile_entity.dart';
 
 abstract class ProfileRepository {
@@ -6,5 +8,6 @@ abstract class ProfileRepository {
   Future<ProfileEntity> updateCurrentUserProfile({
     required String fullName,
     String? cpfCnpj,
+    LatLng? location,
   });
 }
