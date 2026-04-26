@@ -126,6 +126,7 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
 Future<void> _onCreateRequest() async {
   final payload = await showModalBottomSheet<_RequestCreatePayload>(
     context: context,
+    backgroundColor: const Color(0xFF222431),
     isScrollControlled: true,
     showDragHandle: true,
     builder: (context) => _CreateRequestSheet(
@@ -163,6 +164,7 @@ Future<void> _onCreateRequest() async {
   Future<void> _onEditRequest(RequestEntity request) async {
     final payload = await showModalBottomSheet<_RequestEditPayload>(
       context: context,
+      backgroundColor: const Color(0xFF222431),
       isScrollControlled: true,
       showDragHandle: true,
       builder: (context) => _EditRequestSheet(request: request),
@@ -1053,8 +1055,8 @@ class _MyRequestCard extends StatelessWidget {
                 _RequestMetaChip(
                   icon: Icons.attach_money_rounded,
                   text: request.budgetRange?.isNotEmpty == true
-                      ? request.budgetRange!
-                      : 'Sem faixa de orçamento',
+                      ? 'Até ${request.budgetRange!}'
+                      : 'Valor a combinar',
                 ),
                 _RequestMetaChip(
                   icon: request.isRemote == true
@@ -1231,6 +1233,33 @@ class _EditRequestSheetState extends State<_EditRequestSheet> {
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final colorScheme = Theme.of(context).colorScheme;
+    const inputTextColor = Colors.white;
+    const inputLabelColor = Colors.white70;
+    const inputHintColor = Colors.white54;
+
+    final enabledBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: Colors.white38),
+    );
+    final focusedBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: colorScheme.primary, width: 1.6),
+    );
+
+    InputDecoration decoration({required String label, String? hint}) {
+      return InputDecoration(
+        labelText: label,
+        hintText: hint,
+        filled: true,
+        fillColor: const Color(0xFF2A2D3B),
+        border: enabledBorder,
+        enabledBorder: enabledBorder,
+        focusedBorder: focusedBorder,
+        labelStyle: const TextStyle(color: inputLabelColor),
+        hintStyle: const TextStyle(color: inputHintColor),
+      );
+    }
 
     return SafeArea(
       child: Padding(
@@ -1243,16 +1272,18 @@ class _EditRequestSheetState extends State<_EditRequestSheet> {
               'Editar requisição',
               style: Theme.of(
                 context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _titleController,
               textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(
-                labelText: 'Título',
-                border: OutlineInputBorder(),
-              ),
+              style: const TextStyle(color: inputTextColor),
+              cursorColor: colorScheme.primary,
+              decoration: decoration(label: 'Título'),
             ),
             const SizedBox(height: 10),
             TextField(
@@ -1260,19 +1291,23 @@ class _EditRequestSheetState extends State<_EditRequestSheet> {
               textInputAction: TextInputAction.newline,
               minLines: 2,
               maxLines: 4,
-              decoration: const InputDecoration(
-                labelText: 'Descrição',
-                border: OutlineInputBorder(),
+              style: const TextStyle(color: inputTextColor),
+              cursorColor: colorScheme.primary,
+              decoration: decoration(
+                label: 'Descrição',
+                hint:
+                    'Ex.: Notebook não liga após atualização. Preciso de diagnóstico e possível troca de peça.',
               ),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: _budgetRangeController,
               textInputAction: TextInputAction.done,
-              decoration: const InputDecoration(
-                labelText: 'Faixa de orçamento',
-                border: OutlineInputBorder(),
-                hintText: 'Ex.: R\$ 500 - R\$ 1000',
+              style: const TextStyle(color: inputTextColor),
+              cursorColor: colorScheme.primary,
+              decoration: decoration(
+                label: 'Até quanto pode pagar',
+                hint: 'Ex.: R\$ 600',
               ),
             ),
             const SizedBox(height: 8),
@@ -1284,7 +1319,10 @@ class _EditRequestSheetState extends State<_EditRequestSheet> {
                 });
               },
               contentPadding: EdgeInsets.zero,
-              title: const Text('Aceita trabalho remoto'),
+              title: const Text(
+                'Aceita trabalho remoto',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
             const SizedBox(height: 10),
             SizedBox(
@@ -1337,6 +1375,8 @@ class _CreateRequestSheetState extends State<_CreateRequestSheet> {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _budgetController = TextEditingController();
+  String? _titleError;
+  String? _budgetError;
   bool _isRemote = false;
   bool _isSaving = false;
 
@@ -1350,25 +1390,28 @@ class _CreateRequestSheetState extends State<_CreateRequestSheet> {
 
   void _submit() {
     final title = _titleController.text.trim();
-    if (title.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Informe um título para a requisição.')),
-      );
-      return;
-    }
-
     final description = _descriptionController.text.trim();
     final budgetText = _budgetController.text.trim().replaceAll(',', '.');
     final budgetRange = budgetText.isNotEmpty ? double.tryParse(budgetText) : null;
+    final titleError =
+        title.isEmpty ? 'Informe um título para a requisição.' : null;
+    final budgetError = budgetText.isNotEmpty && budgetRange == null
+        ? 'Informe um valor numérico válido.'
+        : null;
 
-    if (budgetText.isNotEmpty && budgetRange == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Informe um valor numérico válido para o orçamento.')),
-      );
+    if (titleError != null || budgetError != null) {
+      setState(() {
+        _titleError = titleError;
+        _budgetError = budgetError;
+      });
       return;
     }
 
-    setState(() => _isSaving = true);
+    setState(() {
+      _titleError = null;
+      _budgetError = null;
+      _isSaving = true;
+    });
 
     Navigator.of(context).pop(
       _RequestCreatePayload(
@@ -1385,6 +1428,44 @@ class _CreateRequestSheetState extends State<_CreateRequestSheet> {
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final colorScheme = Theme.of(context).colorScheme;
+    const inputTextColor = Colors.white;
+    const inputLabelColor = Colors.white70;
+    const inputHintColor = Colors.white54;
+
+    final enabledBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: Colors.white38),
+    );
+    final focusedBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: colorScheme.primary, width: 1.6),
+    );
+    final errorBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: colorScheme.error),
+    );
+
+    InputDecoration decoration({
+      required String label,
+      String? hint,
+      String? errorText,
+    }) {
+      return InputDecoration(
+        labelText: label,
+        hintText: hint,
+        errorText: errorText,
+        filled: true,
+        fillColor: const Color(0xFF2A2D3B),
+        border: enabledBorder,
+        enabledBorder: enabledBorder,
+        focusedBorder: focusedBorder,
+        errorBorder: errorBorder,
+        focusedErrorBorder: errorBorder,
+        labelStyle: const TextStyle(color: inputLabelColor),
+        hintStyle: const TextStyle(color: inputHintColor),
+      );
+    }
 
     return SafeArea(
       child: Padding(
@@ -1398,15 +1479,27 @@ class _CreateRequestSheetState extends State<_CreateRequestSheet> {
               style: Theme.of(context)
                   .textTheme
                   .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700),
+                  ?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _titleController,
               textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(
-                labelText: 'Título *',
-                border: OutlineInputBorder(),
+              style: const TextStyle(color: inputTextColor),
+              cursorColor: colorScheme.primary,
+              onChanged: (_) {
+                if (_titleError != null) {
+                  setState(() {
+                    _titleError = null;
+                  });
+                }
+              },
+              decoration: decoration(
+                label: 'Título *',
+                errorText: _titleError,
               ),
             ),
             const SizedBox(height: 10),
@@ -1415,9 +1508,12 @@ class _CreateRequestSheetState extends State<_CreateRequestSheet> {
               textInputAction: TextInputAction.newline,
               minLines: 2,
               maxLines: 4,
-              decoration: const InputDecoration(
-                labelText: 'Descrição',
-                border: OutlineInputBorder(),
+              style: const TextStyle(color: inputTextColor),
+              cursorColor: colorScheme.primary,
+              decoration: decoration(
+                label: 'Descrição',
+                hint:
+                    'Ex.: Computador lento, sem acesso à internet e impressora não conecta. Preciso de suporte presencial.',
               ),
             ),
             const SizedBox(height: 10),
@@ -1425,10 +1521,19 @@ class _CreateRequestSheetState extends State<_CreateRequestSheet> {
               controller: _budgetController,
               textInputAction: TextInputAction.done,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Orçamento (R\$)',
-                border: OutlineInputBorder(),
-                hintText: 'Ex.: 500.00',
+              style: const TextStyle(color: inputTextColor),
+              cursorColor: colorScheme.primary,
+              onChanged: (_) {
+                if (_budgetError != null) {
+                  setState(() {
+                    _budgetError = null;
+                  });
+                }
+              },
+              decoration: decoration(
+                label: 'Até quanto pode pagar (R\$)',
+                hint: 'Ex.: 500',
+                errorText: _budgetError,
               ),
             ),
             const SizedBox(height: 8),
@@ -1436,7 +1541,10 @@ class _CreateRequestSheetState extends State<_CreateRequestSheet> {
               value: _isRemote,
               onChanged: (value) => setState(() => _isRemote = value),
               contentPadding: EdgeInsets.zero,
-              title: const Text('Aceita trabalho remoto'),
+              title: const Text(
+                'Aceita trabalho remoto',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
             const SizedBox(height: 4),
             Row(
@@ -1450,7 +1558,7 @@ class _CreateRequestSheetState extends State<_CreateRequestSheet> {
                     style: Theme.of(context)
                         .textTheme
                         .labelSmall
-                        ?.copyWith(color: Colors.white38),
+                        ?.copyWith(color: Colors.white54),
                   ),
                 ),
               ],
