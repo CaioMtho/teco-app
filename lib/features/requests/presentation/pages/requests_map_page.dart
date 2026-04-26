@@ -520,19 +520,21 @@ Future<void> _onCreateRequest() async {
             ),
         ],
       ),
-      floatingActionButton: Padding(
-        padding: EdgeInsets.only(bottom: fabBottomPadding),
-        child: Tooltip(
-          message: 'Voltar para sua localização',
-          child: FloatingActionButton.small(
-            hoverElevation: 10,
-            onPressed: () {
-              _mapController.move(_mainLocation, 13.5);
-            },
-            child: const Icon(Icons.my_location_rounded),
-          ),
-        ),
-      ),
+      floatingActionButton: _isMyRequestsPanelOpen
+          ? null
+          : Padding(
+              padding: EdgeInsets.only(bottom: fabBottomPadding),
+              child: Tooltip(
+                message: 'Voltar para sua localização',
+                child: FloatingActionButton.small(
+                  hoverElevation: 10,
+                  onPressed: () {
+                    _mapController.move(_mainLocation, 13.5);
+                  },
+                  child: const Icon(Icons.my_location_rounded),
+                ),
+              ),
+            ),
     );
   }
 
