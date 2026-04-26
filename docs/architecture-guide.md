@@ -1,149 +1,305 @@
 # Guia de Estrutura e Padrões
 
-Este documento descreve a organização atual do projeto TECO e a estrutura recomendada para manter o app coerente com a abordagem Feature-First + Clean Architecture, com foco em uma experiência majoritariamente SPA.
+Este documento descreve a organização do projeto e os princípios adotados para manter consistência arquitetural utilizando Feature-First combinado com Clean Architecture. O objetivo é garantir previsibilidade, baixo acoplamento e alta coesão entre as partes do sistema.
 
-## Visão atual
+## Visão geral da estrutura
 
-Hoje a base do app está organizada assim:
+A base do projeto é organizada em torno de três pilares principais:
 
-- `lib/main.dart`: bootstrap da aplicação, carregamento de `.env`, inicialização do Supabase e montagem do `ProviderScope`.
-- `lib/app.dart`: shell alternativo de UI, útil como ponto de composição, mas ainda não é o único ponto de entrada.
-- `lib/core/`: código compartilhado do app, como constantes e serviços globais.
-- `lib/features/auth/`: autenticação, cadastro, sessão e orquestração de estado.
-- `lib/features/requests/`: fluxo de requisições e mapa principal da área autenticada.
-- `lib/features/main_page/`: feature legada que, na prática, representa perfil/conta do usuário.
+- ponto de entrada da aplicação
+- núcleo compartilhado (`core`)
+- features isoladas por domínio de negócio
 
-A leitura correta da base é: o projeto já usa feature-first em vários pontos, mas ainda há mistura entre composição de app, navegação e responsabilidades de feature.
+Estrutura base:
 
-## Estrutura recomendada
+- `lib/main.dart`: responsável exclusivamente pelo bootstrap da aplicação. Inicializa dependências globais e executa o widget raiz.
+- `lib/app.dart`: composição do aplicativo. Define tema, rotas, navegação e estrutura principal da UI.
+- `lib/core/`: contém código compartilhado e independente de features.
+- `lib/features/`: contém todas as funcionalidades organizadas por domínio.
 
-A estrutura alvo deve deixar explícito o papel de cada pasta.
+## Organização por feature
 
-- `lib/main.dart`: bootstrap apenas. Inicializa o ambiente e chama o widget raiz.
-- `lib/app.dart`: composição do app. Define `MaterialApp`, tema, rotas e shell principal.
-- `lib/core/`: utilitários e serviços globais realmente compartilhados.
-- `lib/features/<feature>/data/`: fontes de dados e implementações de repositório.
-- `lib/features/<feature>/domain/`: entidades, contratos e casos de uso.
-- `lib/features/<feature>/presentation/`: páginas, widgets e estado da feature.
-- `docs/`: documentação de arquitetura, padrões e decisões do projeto.
+Cada feature segue uma divisão interna baseada em camadas:
 
-Estrutura alvo sugerida para `lib/`:
+- `data/`
+- `domain/`
+- `presentation/`
 
-- `lib/app.dart`
-- `lib/main.dart`
-- `lib/core/`
-- `lib/features/auth/`
-- `lib/features/requests/`
-- `lib/features/profile/` ou `lib/features/account/` no lugar de `main_page`
-- `lib/features/proposals/`
-- `lib/features/chat/`
-- `lib/features/payments/`
-- `lib/features/reviews/`
-- `lib/features/disputes/`
+Exemplo:
 
-## Separações conceituais
+```
+lib/features/<feature>/
+  data/
+  domain/
+  presentation/
+```
 
-### Core
+Essa separação não é estética; ela define limites claros de responsabilidade e dependência.
 
-`core` deve conter apenas o que é realmente global:
+---
 
-- constantes compartilhadas
-- serviços reutilizáveis
-- helpers e utilitários genéricos
-- widgets reutilizáveis e neutros
-
-Não deve conter regra de negócio de feature.
-
-### Feature
-
-Uma feature representa uma capacidade de negócio isolada. Ela não deve depender da estrutura interna de outra feature.
+## Camadas em detalhe
 
 ### Domain
 
-Camada sem dependência de Flutter. Deve conter:
+É a camada central da aplicação.
 
-- entities
-- contratos de repositório
-- use cases
+Características:
+
+- não depende de Flutter
+- não depende de bibliotecas externas de infraestrutura
+- representa regras de negócio puras
+
+Contém:
+
+- **Entities**: modelos de negócio (ex: User, Request)
+- **Repository Contracts**: interfaces que definem como os dados são acessados
+- **Use Cases**: regras de negócio explícitas e reutilizáveis
+
+#### Use Case
+
+Um use case representa uma ação do sistema.
+
+Exemplo conceitual:
+
+- `CreateRequest`
+- `GetUserProfile`
+- `SendMessage`
+
+Ele:
+
+- orquestra entidades
+- utiliza repositórios
+- não sabe como os dados são obtidos
+
+---
 
 ### Data
 
-Camada de implementação dos contratos do domain. Deve conter:
+É a camada responsável por implementar o acesso a dados.
 
-- datasources
-- repositories
-- adapters para API, banco ou SDKs externos
+Contém:
+
+- **Datasources**
+- **Repository Implementations**
+- **Adapters (API, banco, SDKs)**
+
+#### Datasource
+
+Um datasource é a fonte bruta de dados.
+
+Ele representa **como** os dados são obtidos.
+
+Tipos comuns:
+
+- remoto (API REST, Supabase, GraphQL)
+- local (SQLite, cache, storage)
+
+Responsabilidades:
+
+- fazer chamadas externas
+- lidar com serialização (JSON ↔ objeto)
+- tratar erros de transporte
+
+Importante:
+
+- não contém regra de negócio
+- não conhece use cases
+- não conhece UI
+
+Exemplo:
+
+```
+class RequestsRemoteDatasource {
+  Future<List<RequestModel>> fetchRequests();
+}
+```
+
+#### Repository
+
+O repository é uma camada de abstração entre o domain e os datasources.
+
+Ele representa **o que** pode ser feito com os dados, não **como**.
+
+Diferença central:
+
+- datasource → implementação técnica
+- repository → contrato orientado ao domínio
+
+Responsabilidades:
+
+- implementar contratos definidos no `domain`
+- decidir de onde os dados vêm (cache, API, etc.)
+- combinar múltiplos datasources se necessário
+- mapear modelos (`Model`) para entidades (`Entity`)
+
+Exemplo conceitual:
+
+```
+class RequestsRepositoryImpl implements RequestsRepository {
+  final RequestsRemoteDatasource remote;
+
+  Future<List<Request>> getRequests() async {
+    final data = await remote.fetchRequests();
+    return data.map((e) => e.toEntity()).toList();
+  }
+}
+```
+
+---
 
 ### Presentation
 
-Camada de interface. Deve conter:
+É a camada de interface com o usuário.
 
-- pages/screens
-- widgets da feature
-- state management da feature
+Contém:
+
+- páginas (screens)
+- widgets
+- gerenciamento de estado (providers, controllers, etc.)
+
+Responsabilidades:
+
+- renderizar UI
+- reagir a eventos do usuário
+- consumir use cases
+
+Importante:
+
+- não acessa datasource diretamente
+- não implementa regra de negócio
+- não instancia repositórios manualmente
+
+Fluxo típico:
+
+```
+UI → UseCase → Repository → Datasource
+```
+
+---
+
+## Core
+
+A pasta `core` deve conter apenas elementos realmente compartilhados.
+
+Inclui:
+
+- constantes globais
+- serviços reutilizáveis (ex: logger, client HTTP)
+- utilitários genéricos
+- widgets reutilizáveis neutros
+
+Restrições:
+
+- não deve conter lógica específica de feature
+- não deve crescer descontroladamente (evitar virar “pasta genérica”)
+
+---
 
 ## Regras de dependência
 
-### Fluxos permitidos
+A arquitetura impõe direcionalidade clara nas dependências.
 
-- `presentation -> domain`
-- `data -> domain`
-- `presentation -> core` quando for algo realmente compartilhado
-- `data -> core` quando usar serviços globais legítimos
+### Permitido
 
-### Fluxos proibidos
+- `presentation → domain`
+- `data → domain`
+- `presentation → core`
+- `data → core`
 
-- `domain -> data`
-- `domain -> presentation`
-- `presentation -> data` diretamente
-- importação cruzada entre features sem contrato claro
+### Proibido
 
-Se a presentation precisa de uma implementação de data, isso deve vir por provider, controller ou DI.
+- `domain → data`
+- `domain → presentation`
+- `presentation → data` diretamente
+- dependência direta entre features sem abstração
 
-## SPA e navegação
+Essas regras garantem:
 
-Como o app é majoritariamente SPA, a navegação deve seguir alguns princípios:
+- testabilidade
+- isolamento de regras de negócio
+- facilidade de manutenção
 
-- usar um shell único para a experiência autenticada
-- centralizar o roteamento em um único lugar
-- tratar autenticação como gate de entrada, não como navegação espalhada pela UI
-- evitar trocar `home:` em múltiplos pontos do app
-- evitar `Navigator.popUntil` como mecanismo principal de fluxo entre áreas do produto
+---
 
-A recomendação é que `app.dart` concentre o app shell e a navegação principal. Isso reduz acoplamento e torna o comportamento mais previsível.
+## Navegação e estrutura SPA
 
-## Estado e DI
+A aplicação segue um modelo majoritariamente SPA.
 
-- Repositórios, use cases e controllers devem ser expostos por providers ou um módulo de DI.
-- Páginas não devem instanciar repositórios diretamente.
-- Widgets devem ser finos e focados em apresentação.
-- A regra geral é: composição fora da UI, consumo dentro da UI.
+Princípios:
 
-Para o caso atual, isso significa que `auth`, `requests` e `profile` devem receber dependências já preparadas, em vez de montar `RepositoryImpl` dentro da própria página.
+- um único ponto de composição da navegação
+- shell principal consistente
+- controle centralizado de rotas
+- autenticação tratada como gate de entrada
 
-## Como criar uma nova feature
+Evitar:
 
-Checklist prático:
+- múltiplos pontos de definição de `home`
+- lógica de navegação espalhada em widgets
+- uso excessivo de manipulação manual de stack (`popUntil`, etc.)
 
-1. Criar a pasta em `lib/features/<nova_feature>/`.
-2. Separar `data`, `domain` e `presentation`.
-3. Definir entidades e contratos no `domain` antes da implementação.
-4. Implementar datasources e repositories no `data`.
-5. Expor providers ou controllers na `presentation`.
-6. Conectar a feature ao app shell sem importar detalhes internos de outras features.
-7. Criar testes de regra de negócio e de interface quando necessário.
+---
 
-## Anti-padrões comuns
+## Injeção de dependência (DI)
 
-- Instanciar repositories dentro de páginas ou widgets.
-- Colocar regra de negócio no `build` da UI.
-- Fazer importação cruzada entre features sem abstração.
-- Usar nomes genéricos como `main_page` para responsabilidade de perfil/conta.
-- Manter múltiplos pontos de entrada de UI sem necessidade.
-- Misturar refatoração estrutural com feature nova no mesmo escopo de mudança.
+Dependências devem ser resolvidas fora da UI.
 
-## Observações de nomenclatura
+Diretrizes:
 
-`main_page` existe hoje como nome de pasta, mas não descreve bem a responsabilidade real. Para o projeto, o nome mais correto é `profile` ou `account`.
+- repositórios e use cases expostos via providers ou container de DI
+- páginas recebem dependências prontas
+- widgets não criam implementações concretas
 
-Enquanto o refactor não acontecer, a documentação deve tratar esse módulo como a área de perfil/conta do usuário.
+Regra prática:
+
+- composição fora da UI
+- consumo dentro da UI
+
+---
+
+## Fluxo completo de dados
+
+Exemplo do fluxo padrão:
+
+1. usuário interage com a UI
+2. a UI chama um use case
+3. o use case chama um repository (interface)
+4. o repository (implementação) acessa um datasource
+5. o resultado sobe de volta até a UI
+
+Representação:
+
+```
+Presentation → UseCase → Repository → Datasource
+```
+
+---
+
+## Criação de novas features
+
+Processo recomendado:
+
+1. criar `lib/features/<feature>/`
+2. estruturar em `data`, `domain`, `presentation`
+3. definir entidades e contratos primeiro
+4. implementar datasources
+5. implementar repositories
+6. criar use cases
+7. integrar com a UI via providers
+8. conectar ao sistema de navegação
+
+---
+
+## Anti-padrões
+
+Evitar:
+
+- instanciar repository dentro de widget
+- colocar regra de negócio na UI
+- acoplamento direto entre features
+- uso de nomes genéricos para módulos
+- mistura de responsabilidades entre camadas
+- acesso direto a API dentro da presentation
+
+---

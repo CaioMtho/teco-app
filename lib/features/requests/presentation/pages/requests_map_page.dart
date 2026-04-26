@@ -8,7 +8,7 @@ import '../../../../core/constants/app_constants.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../domain/entities/request_entity.dart';
 import '../providers/requests_providers.dart';
-import '../../../main_page/presentation/pages/profile_page.dart';
+import '../../../profile/presentation/pages/profile_page.dart';
 
 class RequestsMapPage extends ConsumerStatefulWidget {
   const RequestsMapPage({super.key});

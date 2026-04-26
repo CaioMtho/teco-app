@@ -14,8 +14,8 @@ import '../../domain/usecases/observe_auth_state_usecase.dart';
 import '../../domain/usecases/sign_in_usecase.dart';
 import '../../domain/usecases/sign_out_usecase.dart';
 import '../../domain/usecases/sign_up_usecase.dart';
-import '../../../main_page/presentation/providers/profile_providers.dart';
-import '../../../main_page/domain/exceptions/profile_exceptions.dart';
+import '../../../profile/presentation/providers/profile_providers.dart';
+import '../../../profile/domain/exceptions/profile_exceptions.dart';
 
 final authRemoteDataSourceProvider = Provider<AuthRemoteDataSource>((ref) {
   return AuthRemoteDataSource();
