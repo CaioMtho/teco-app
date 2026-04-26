@@ -6,16 +6,9 @@ import 'package:latlong2/latlong.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
-import '../../data/datasources/requests_remote_datasource.dart';
-import '../../data/repositories/requests_repository_impl.dart';
-import '../../domain/repositories/requests_repository.dart';
-import '../../domain/usecases/delete_current_user_request_usecase.dart';
-import '../../domain/usecases/get_current_user_open_requests_usecase.dart';
 import '../../domain/entities/request_entity.dart';
-import '../../domain/usecases/get_nearby_open_requests_usecase.dart';
-import '../../domain/usecases/update_current_user_request_usecase.dart';
-import '../../domain/usecases/create_request_usecase.dart';
-import '../../../main_page/presentation/pages/profile_page.dart';
+import '../providers/requests_providers.dart';
+import '../../../profile/presentation/pages/profile_page.dart';
 
 class RequestsMapPage extends ConsumerStatefulWidget {
   const RequestsMapPage({super.key});
@@ -28,22 +21,6 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
   static const LatLng _defaultMapCenter = LatLng(-23.55052, -46.633308);
 
   final MapController _mapController = MapController();
-  final RequestsRepository _requestsRepository = RequestsRepositoryImpl(
-    RequestsRemoteDataSource(),
-  );
-
-  late final CreateRequestUseCase _createRequestUseCase =
-      CreateRequestUseCase(_requestsRepository);
-  late final GetNearbyOpenRequestsUseCase _getNearbyOpenRequestsUseCase =
-      GetNearbyOpenRequestsUseCase(_requestsRepository);
-  late final GetCurrentUserOpenRequestsUseCase
-  _getCurrentUserOpenRequestsUseCase = GetCurrentUserOpenRequestsUseCase(
-    _requestsRepository,
-  );
-  late final UpdateCurrentUserRequestUseCase _updateCurrentUserRequestUseCase =
-      UpdateCurrentUserRequestUseCase(_requestsRepository);
-  late final DeleteCurrentUserRequestUseCase _deleteCurrentUserRequestUseCase =
-      DeleteCurrentUserRequestUseCase(_requestsRepository);
 
   LatLng _mainLocation = const LatLng(0, 0);
   List<RequestEntity> _openRequests = const [];
@@ -94,7 +71,9 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
     }
 
     try {
-      final requests = await _getCurrentUserOpenRequestsUseCase.call();
+      final requests = await ref
+          .read(getCurrentUserOpenRequestsUseCaseProvider)
+          .call();
 
       if (!mounted) {
         return;
@@ -126,6 +105,7 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
 Future<void> _onCreateRequest() async {
   final payload = await showModalBottomSheet<_RequestCreatePayload>(
     context: context,
+    backgroundColor: const Color(0xFF222431),
     isScrollControlled: true,
     showDragHandle: true,
     builder: (context) => _CreateRequestSheet(
@@ -137,7 +117,7 @@ Future<void> _onCreateRequest() async {
   if (payload == null) return;
 
   try {
-    await _createRequestUseCase.call(
+    await ref.read(createRequestUseCaseProvider).call(
       title: payload.title,
       description: payload.description,
       budgetRange: payload.budgetRange,
@@ -163,6 +143,7 @@ Future<void> _onCreateRequest() async {
   Future<void> _onEditRequest(RequestEntity request) async {
     final payload = await showModalBottomSheet<_RequestEditPayload>(
       context: context,
+      backgroundColor: const Color(0xFF222431),
       isScrollControlled: true,
       showDragHandle: true,
       builder: (context) => _EditRequestSheet(request: request),
@@ -173,7 +154,7 @@ Future<void> _onCreateRequest() async {
     }
 
     try {
-      await _updateCurrentUserRequestUseCase.call(
+      await ref.read(updateCurrentUserRequestUseCaseProvider).call(
         requestId: request.id,
         title: payload.title,
         description: payload.description,
@@ -235,7 +216,9 @@ Future<void> _onCreateRequest() async {
     }
 
     try {
-      await _deleteCurrentUserRequestUseCase.call(requestId: request.id);
+      await ref.read(deleteCurrentUserRequestUseCaseProvider).call(
+        requestId: request.id,
+      );
       await _loadMapData();
 
       if (!mounted) {
@@ -287,7 +270,7 @@ Future<void> _onCreateRequest() async {
 
       List<RequestEntity> openRequests = const [];
       try {
-        openRequests = await _getNearbyOpenRequestsUseCase.call(
+        openRequests = await ref.read(getNearbyOpenRequestsUseCaseProvider).call(
           center: mainLocation,
           radiusKm: AppConstants.openRequestsRadiusKm,
         );
@@ -298,7 +281,8 @@ Future<void> _onCreateRequest() async {
 
       List<RequestEntity> currentUserOpenRequests = const [];
       try {
-        currentUserOpenRequests = await _getCurrentUserOpenRequestsUseCase
+        currentUserOpenRequests = await ref
+            .read(getCurrentUserOpenRequestsUseCaseProvider)
             .call();
       } catch (_) {
         currentUserOpenRequests = const [];
@@ -347,15 +331,15 @@ Future<void> _onCreateRequest() async {
   }
 
   Future<LatLng> _resolveMainLocation() async {
+    final deviceLocation = await _resolveDeviceLocation();
+    if (deviceLocation != null) {
+      return deviceLocation;
+    }
+
     final profileLocation =
         ref.read(authControllerProvider).valueOrNull?.profile?.location;
     if (profileLocation != null) {
       return profileLocation;
-    }
-
-    final deviceLocation = await _resolveDeviceLocation();
-    if (deviceLocation != null) {
-      return deviceLocation;
     }
 
     return _defaultMapCenter;
@@ -520,19 +504,21 @@ Future<void> _onCreateRequest() async {
             ),
         ],
       ),
-      floatingActionButton: Padding(
-        padding: EdgeInsets.only(bottom: fabBottomPadding),
-        child: Tooltip(
-          message: 'Voltar para sua localização',
-          child: FloatingActionButton.small(
-            hoverElevation: 10,
-            onPressed: () {
-              _mapController.move(_mainLocation, 13.5);
-            },
-            child: const Icon(Icons.my_location_rounded),
-          ),
-        ),
-      ),
+      floatingActionButton: _isMyRequestsPanelOpen
+          ? null
+          : Padding(
+              padding: EdgeInsets.only(bottom: fabBottomPadding),
+              child: Tooltip(
+                message: 'Voltar para sua localização',
+                child: FloatingActionButton.small(
+                  hoverElevation: 10,
+                  onPressed: () {
+                    _mapController.move(_mainLocation, 13.5);
+                  },
+                  child: const Icon(Icons.my_location_rounded),
+                ),
+              ),
+            ),
     );
   }
 
@@ -1051,8 +1037,8 @@ class _MyRequestCard extends StatelessWidget {
                 _RequestMetaChip(
                   icon: Icons.attach_money_rounded,
                   text: request.budgetRange?.isNotEmpty == true
-                      ? request.budgetRange!
-                      : 'Sem faixa de orçamento',
+                      ? 'Até ${request.budgetRange!}'
+                      : 'Valor a combinar',
                 ),
                 _RequestMetaChip(
                   icon: request.isRemote == true
@@ -1229,6 +1215,33 @@ class _EditRequestSheetState extends State<_EditRequestSheet> {
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final colorScheme = Theme.of(context).colorScheme;
+    const inputTextColor = Colors.white;
+    const inputLabelColor = Colors.white70;
+    const inputHintColor = Colors.white54;
+
+    final enabledBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: Colors.white38),
+    );
+    final focusedBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: colorScheme.primary, width: 1.6),
+    );
+
+    InputDecoration decoration({required String label, String? hint}) {
+      return InputDecoration(
+        labelText: label,
+        hintText: hint,
+        filled: true,
+        fillColor: const Color(0xFF2A2D3B),
+        border: enabledBorder,
+        enabledBorder: enabledBorder,
+        focusedBorder: focusedBorder,
+        labelStyle: const TextStyle(color: inputLabelColor),
+        hintStyle: const TextStyle(color: inputHintColor),
+      );
+    }
 
     return SafeArea(
       child: Padding(
@@ -1241,16 +1254,18 @@ class _EditRequestSheetState extends State<_EditRequestSheet> {
               'Editar requisição',
               style: Theme.of(
                 context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _titleController,
               textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(
-                labelText: 'Título',
-                border: OutlineInputBorder(),
-              ),
+              style: const TextStyle(color: inputTextColor),
+              cursorColor: colorScheme.primary,
+              decoration: decoration(label: 'Título'),
             ),
             const SizedBox(height: 10),
             TextField(
@@ -1258,19 +1273,23 @@ class _EditRequestSheetState extends State<_EditRequestSheet> {
               textInputAction: TextInputAction.newline,
               minLines: 2,
               maxLines: 4,
-              decoration: const InputDecoration(
-                labelText: 'Descrição',
-                border: OutlineInputBorder(),
+              style: const TextStyle(color: inputTextColor),
+              cursorColor: colorScheme.primary,
+              decoration: decoration(
+                label: 'Descrição',
+                hint:
+                    'Ex.: Notebook não liga após atualização. Preciso de diagnóstico e possível troca de peça.',
               ),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: _budgetRangeController,
               textInputAction: TextInputAction.done,
-              decoration: const InputDecoration(
-                labelText: 'Faixa de orçamento',
-                border: OutlineInputBorder(),
-                hintText: 'Ex.: R\$ 500 - R\$ 1000',
+              style: const TextStyle(color: inputTextColor),
+              cursorColor: colorScheme.primary,
+              decoration: decoration(
+                label: 'Até quanto pode pagar',
+                hint: 'Ex.: R\$ 600',
               ),
             ),
             const SizedBox(height: 8),
@@ -1282,7 +1301,10 @@ class _EditRequestSheetState extends State<_EditRequestSheet> {
                 });
               },
               contentPadding: EdgeInsets.zero,
-              title: const Text('Aceita trabalho remoto'),
+              title: const Text(
+                'Aceita trabalho remoto',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
             const SizedBox(height: 10),
             SizedBox(
@@ -1335,6 +1357,8 @@ class _CreateRequestSheetState extends State<_CreateRequestSheet> {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _budgetController = TextEditingController();
+  String? _titleError;
+  String? _budgetError;
   bool _isRemote = false;
   bool _isSaving = false;
 
@@ -1348,25 +1372,28 @@ class _CreateRequestSheetState extends State<_CreateRequestSheet> {
 
   void _submit() {
     final title = _titleController.text.trim();
-    if (title.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Informe um título para a requisição.')),
-      );
-      return;
-    }
-
     final description = _descriptionController.text.trim();
     final budgetText = _budgetController.text.trim().replaceAll(',', '.');
     final budgetRange = budgetText.isNotEmpty ? double.tryParse(budgetText) : null;
+    final titleError =
+        title.isEmpty ? 'Informe um título para a requisição.' : null;
+    final budgetError = budgetText.isNotEmpty && budgetRange == null
+        ? 'Informe um valor numérico válido.'
+        : null;
 
-    if (budgetText.isNotEmpty && budgetRange == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Informe um valor numérico válido para o orçamento.')),
-      );
+    if (titleError != null || budgetError != null) {
+      setState(() {
+        _titleError = titleError;
+        _budgetError = budgetError;
+      });
       return;
     }
 
-    setState(() => _isSaving = true);
+    setState(() {
+      _titleError = null;
+      _budgetError = null;
+      _isSaving = true;
+    });
 
     Navigator.of(context).pop(
       _RequestCreatePayload(
@@ -1383,6 +1410,44 @@ class _CreateRequestSheetState extends State<_CreateRequestSheet> {
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final colorScheme = Theme.of(context).colorScheme;
+    const inputTextColor = Colors.white;
+    const inputLabelColor = Colors.white70;
+    const inputHintColor = Colors.white54;
+
+    final enabledBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: Colors.white38),
+    );
+    final focusedBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: colorScheme.primary, width: 1.6),
+    );
+    final errorBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: colorScheme.error),
+    );
+
+    InputDecoration decoration({
+      required String label,
+      String? hint,
+      String? errorText,
+    }) {
+      return InputDecoration(
+        labelText: label,
+        hintText: hint,
+        errorText: errorText,
+        filled: true,
+        fillColor: const Color(0xFF2A2D3B),
+        border: enabledBorder,
+        enabledBorder: enabledBorder,
+        focusedBorder: focusedBorder,
+        errorBorder: errorBorder,
+        focusedErrorBorder: errorBorder,
+        labelStyle: const TextStyle(color: inputLabelColor),
+        hintStyle: const TextStyle(color: inputHintColor),
+      );
+    }
 
     return SafeArea(
       child: Padding(
@@ -1396,15 +1461,27 @@ class _CreateRequestSheetState extends State<_CreateRequestSheet> {
               style: Theme.of(context)
                   .textTheme
                   .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700),
+                  ?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _titleController,
               textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(
-                labelText: 'Título *',
-                border: OutlineInputBorder(),
+              style: const TextStyle(color: inputTextColor),
+              cursorColor: colorScheme.primary,
+              onChanged: (_) {
+                if (_titleError != null) {
+                  setState(() {
+                    _titleError = null;
+                  });
+                }
+              },
+              decoration: decoration(
+                label: 'Título *',
+                errorText: _titleError,
               ),
             ),
             const SizedBox(height: 10),
@@ -1413,9 +1490,12 @@ class _CreateRequestSheetState extends State<_CreateRequestSheet> {
               textInputAction: TextInputAction.newline,
               minLines: 2,
               maxLines: 4,
-              decoration: const InputDecoration(
-                labelText: 'Descrição',
-                border: OutlineInputBorder(),
+              style: const TextStyle(color: inputTextColor),
+              cursorColor: colorScheme.primary,
+              decoration: decoration(
+                label: 'Descrição',
+                hint:
+                    'Ex.: Computador lento, sem acesso à internet e impressora não conecta. Preciso de suporte presencial.',
               ),
             ),
             const SizedBox(height: 10),
@@ -1423,10 +1503,19 @@ class _CreateRequestSheetState extends State<_CreateRequestSheet> {
               controller: _budgetController,
               textInputAction: TextInputAction.done,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Orçamento (R\$)',
-                border: OutlineInputBorder(),
-                hintText: 'Ex.: 500.00',
+              style: const TextStyle(color: inputTextColor),
+              cursorColor: colorScheme.primary,
+              onChanged: (_) {
+                if (_budgetError != null) {
+                  setState(() {
+                    _budgetError = null;
+                  });
+                }
+              },
+              decoration: decoration(
+                label: 'Até quanto pode pagar (R\$)',
+                hint: 'Ex.: 500',
+                errorText: _budgetError,
               ),
             ),
             const SizedBox(height: 8),
@@ -1434,7 +1523,10 @@ class _CreateRequestSheetState extends State<_CreateRequestSheet> {
               value: _isRemote,
               onChanged: (value) => setState(() => _isRemote = value),
               contentPadding: EdgeInsets.zero,
-              title: const Text('Aceita trabalho remoto'),
+              title: const Text(
+                'Aceita trabalho remoto',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
             const SizedBox(height: 4),
             Row(
@@ -1448,7 +1540,7 @@ class _CreateRequestSheetState extends State<_CreateRequestSheet> {
                     style: Theme.of(context)
                         .textTheme
                         .labelSmall
-                        ?.copyWith(color: Colors.white38),
+                        ?.copyWith(color: Colors.white54),
                   ),
                 ),
               ],

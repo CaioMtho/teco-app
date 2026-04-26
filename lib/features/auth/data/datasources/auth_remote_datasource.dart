@@ -1,4 +1,3 @@
-import 'package:supabase_flutter/supabase_flutter.dart' hide AuthUser;
 
 import '../../../../core/services/supabase_service.dart';
 import '../../domain/entities/auth_sign_up_payload.dart';

@@ -1,4 +1,4 @@
-import '../../../main_page/domain/entities/profile_entity.dart';
+import '../../../profile/domain/entities/profile_entity.dart';
 import 'auth_user.dart';
 
 class AppAuthState {

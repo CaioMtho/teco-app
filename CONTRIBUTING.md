@@ -15,6 +15,13 @@ O objetivo é garantir **consistência**, **qualidade** e **previsibilidade** no
 * Evite acoplamento entre features
 * Prefira código simples, legível e testável
 
+## Ponto de Entrada e Composição
+
+* O bootstrap da aplicação acontece em `lib/main.dart`
+* `lib/app.dart` deve concentrar a composição visual da aplicação, tema e navegação
+* A tela raiz do app deve vir de uma árvore única de composição, evitando múltiplos pontos de entrada concorrentes
+* Em uma SPA, a navegação deve ser centralizada e previsível, com shell único para as áreas autenticadas e públicas
+
 ---
 
 ## Modelo de Branches
@@ -202,7 +209,8 @@ presentation → data (direto)
 ## Injeção de Dependências
 
 * Não instanciar dependências dentro da UI
-* Centralizar configuração no `app.dart` ou módulo de DI
+* Centralizar configuração em `app.dart` ou em um módulo dedicado de DI
+* Widgets e páginas devem consumir dependências já expostas por providers, controllers ou serviços de composição
 
 ---
 
@@ -210,6 +218,16 @@ presentation → data (direto)
 
 * Definição centralizada
 * Cada feature expõe apenas suas páginas públicas
+* Prefira `MaterialApp.router` ou outra solução centralizada equivalente quando a navegação crescer
+* Evite trocar a tela principal por `home:` de forma ad hoc em múltiplos lugares
+
+---
+
+## Nomenclatura de Features
+
+* Nomeie features de forma explícita e estável
+* `main_page` é um nome legado nesta base e deve ser tratado como `profile` ou `account` na documentação e em refatores futuros
+* Evite nomes genéricos que descrevem posição visual em vez de responsabilidade de domínio
 
 ---
 
