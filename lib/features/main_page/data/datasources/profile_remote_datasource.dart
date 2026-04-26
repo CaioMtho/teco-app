@@ -3,18 +3,7 @@ import 'package:latlong2/latlong.dart';
 import '../../../../core/services/location_geocoding_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../domain/entities/profile_entity.dart';
-
-class ProfileAuthRequiredException implements Exception {
-  const ProfileAuthRequiredException();
-}
-
-class ProfileNotFoundException implements Exception {
-  const ProfileNotFoundException();
-}
-
-class ProfileAccessDeniedException implements Exception {
-  const ProfileAccessDeniedException();
-}
+import '../../domain/exceptions/profile_exceptions.dart';
 
 class ProfileRemoteDataSource {
   static const LocationGeocodingService _locationGeocodingService =

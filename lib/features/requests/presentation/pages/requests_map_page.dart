@@ -6,15 +6,8 @@ import 'package:latlong2/latlong.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
-import '../../data/datasources/requests_remote_datasource.dart';
-import '../../data/repositories/requests_repository_impl.dart';
-import '../../domain/repositories/requests_repository.dart';
-import '../../domain/usecases/delete_current_user_request_usecase.dart';
-import '../../domain/usecases/get_current_user_open_requests_usecase.dart';
 import '../../domain/entities/request_entity.dart';
-import '../../domain/usecases/get_nearby_open_requests_usecase.dart';
-import '../../domain/usecases/update_current_user_request_usecase.dart';
-import '../../domain/usecases/create_request_usecase.dart';
+import '../providers/requests_providers.dart';
 import '../../../main_page/presentation/pages/profile_page.dart';
 
 class RequestsMapPage extends ConsumerStatefulWidget {
@@ -28,22 +21,6 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
   static const LatLng _defaultMapCenter = LatLng(-23.55052, -46.633308);
 
   final MapController _mapController = MapController();
-  final RequestsRepository _requestsRepository = RequestsRepositoryImpl(
-    RequestsRemoteDataSource(),
-  );
-
-  late final CreateRequestUseCase _createRequestUseCase =
-      CreateRequestUseCase(_requestsRepository);
-  late final GetNearbyOpenRequestsUseCase _getNearbyOpenRequestsUseCase =
-      GetNearbyOpenRequestsUseCase(_requestsRepository);
-  late final GetCurrentUserOpenRequestsUseCase
-  _getCurrentUserOpenRequestsUseCase = GetCurrentUserOpenRequestsUseCase(
-    _requestsRepository,
-  );
-  late final UpdateCurrentUserRequestUseCase _updateCurrentUserRequestUseCase =
-      UpdateCurrentUserRequestUseCase(_requestsRepository);
-  late final DeleteCurrentUserRequestUseCase _deleteCurrentUserRequestUseCase =
-      DeleteCurrentUserRequestUseCase(_requestsRepository);
 
   LatLng _mainLocation = const LatLng(0, 0);
   List<RequestEntity> _openRequests = const [];
@@ -94,7 +71,9 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
     }
 
     try {
-      final requests = await _getCurrentUserOpenRequestsUseCase.call();
+      final requests = await ref
+          .read(getCurrentUserOpenRequestsUseCaseProvider)
+          .call();
 
       if (!mounted) {
         return;
@@ -138,7 +117,7 @@ Future<void> _onCreateRequest() async {
   if (payload == null) return;
 
   try {
-    await _createRequestUseCase.call(
+    await ref.read(createRequestUseCaseProvider).call(
       title: payload.title,
       description: payload.description,
       budgetRange: payload.budgetRange,
@@ -175,7 +154,7 @@ Future<void> _onCreateRequest() async {
     }
 
     try {
-      await _updateCurrentUserRequestUseCase.call(
+      await ref.read(updateCurrentUserRequestUseCaseProvider).call(
         requestId: request.id,
         title: payload.title,
         description: payload.description,
@@ -237,7 +216,9 @@ Future<void> _onCreateRequest() async {
     }
 
     try {
-      await _deleteCurrentUserRequestUseCase.call(requestId: request.id);
+      await ref.read(deleteCurrentUserRequestUseCaseProvider).call(
+        requestId: request.id,
+      );
       await _loadMapData();
 
       if (!mounted) {
@@ -289,7 +270,7 @@ Future<void> _onCreateRequest() async {
 
       List<RequestEntity> openRequests = const [];
       try {
-        openRequests = await _getNearbyOpenRequestsUseCase.call(
+        openRequests = await ref.read(getNearbyOpenRequestsUseCaseProvider).call(
           center: mainLocation,
           radiusKm: AppConstants.openRequestsRadiusKm,
         );
@@ -300,7 +281,8 @@ Future<void> _onCreateRequest() async {
 
       List<RequestEntity> currentUserOpenRequests = const [];
       try {
-        currentUserOpenRequests = await _getCurrentUserOpenRequestsUseCase
+        currentUserOpenRequests = await ref
+            .read(getCurrentUserOpenRequestsUseCaseProvider)
             .call();
       } catch (_) {
         currentUserOpenRequests = const [];

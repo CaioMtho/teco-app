@@ -1,33 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
-import '../../../../core/services/supabase_service.dart';
-import '../../data/datasources/profile_remote_datasource.dart';
-import '../../data/repositories/profile_repository_impl.dart';
 import '../../domain/entities/profile_entity.dart';
-import '../../domain/repositories/profile_repository.dart';
-import '../../domain/usecases/get_current_user_profile_usecase.dart';
-import '../../domain/usecases/update_current_user_profile_usecase.dart';
+import '../../domain/exceptions/profile_exceptions.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
+import '../providers/profile_providers.dart';
 
-class ProfilePage extends StatefulWidget {
+class ProfilePage extends ConsumerStatefulWidget {
   const ProfilePage({super.key});
 
   @override
-  State<ProfilePage> createState() => _ProfilePageState();
+  ConsumerState<ProfilePage> createState() => _ProfilePageState();
 }
 
-class _ProfilePageState extends State<ProfilePage> {
-  final ProfileRepository _profileRepository =
-      ProfileRepositoryImpl(ProfileRemoteDataSource());
-
-  late final GetCurrentUserProfileUseCase _getCurrentUserProfileUseCase =
-      GetCurrentUserProfileUseCase(_profileRepository);
-  late final UpdateCurrentUserProfileUseCase
-      _updateCurrentUserProfileUseCase =
-      UpdateCurrentUserProfileUseCase(_profileRepository);
+class _ProfilePageState extends ConsumerState<ProfilePage> {
 
   ProfileEntity? _profile;
   bool _isLoading = true;
@@ -47,7 +37,7 @@ class _ProfilePageState extends State<ProfilePage> {
     });
 
     try {
-      final profile = await _getCurrentUserProfileUseCase.call();
+      final profile = await ref.read(getCurrentUserProfileUseCaseProvider).call();
       if (!mounted) {
         return;
       }
@@ -96,13 +86,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
     if (confirmed != true) return;
 
-    if (!mounted) {
-      return;
-    }
-
-    Navigator.of(context).popUntil((route) => route.isFirst);
-
-    await SupabaseService.client.auth.signOut();
+    await ref.read(authControllerProvider.notifier).signOut();
   }
 
   Future<void> _openEditSheet() async {
@@ -128,7 +112,9 @@ class _ProfilePageState extends State<ProfilePage> {
     });
 
     try {
-      final updatedProfile = await _updateCurrentUserProfileUseCase.call(
+      final updatedProfile = await ref
+          .read(updateCurrentUserProfileUseCaseProvider)
+          .call(
         fullName: payload.fullName,
         cpfCnpj: payload.cpfCnpj,
         location: payload.location,
@@ -167,7 +153,7 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     final profile = _profile;
-    final email = SupabaseService.client.auth.currentUser?.email;
+    final email = ref.watch(authControllerProvider).valueOrNull?.user?.email;
     final accountLabel = email ?? 'Sessão não autenticada';
 
     return Scaffold(
