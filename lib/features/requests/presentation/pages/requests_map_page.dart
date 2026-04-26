@@ -347,15 +347,15 @@ Future<void> _onCreateRequest() async {
   }
 
   Future<LatLng> _resolveMainLocation() async {
+    final deviceLocation = await _resolveDeviceLocation();
+    if (deviceLocation != null) {
+      return deviceLocation;
+    }
+
     final profileLocation =
         ref.read(authControllerProvider).valueOrNull?.profile?.location;
     if (profileLocation != null) {
       return profileLocation;
-    }
-
-    final deviceLocation = await _resolveDeviceLocation();
-    if (deviceLocation != null) {
-      return deviceLocation;
     }
 
     return _defaultMapCenter;
