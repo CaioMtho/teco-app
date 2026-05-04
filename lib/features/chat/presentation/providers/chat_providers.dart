@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/datasources/chat_remote_datasource.dart';
@@ -24,11 +25,15 @@ class ChatListNotifier extends StateNotifier<AsyncValue<List<ChatEntity>>> {
   final GetUserChatsUseCase _getUserChats;
 
   Future<void> load() async {
+    debugPrint('[ChatListNotifier] Iniciando carregamento de chats');
     try {
       state = const AsyncValue.loading();
+      debugPrint('[ChatListNotifier] Chamando use case getUserChats');
       final chats = await _getUserChats.call();
+      debugPrint('[ChatListNotifier] Carregamento sucesso: ${chats.length} chats obtidos');
       state = AsyncValue.data(chats);
     } catch (e, st) {
+      debugPrint('[ChatListNotifier] Erro ao carregar chats: $e\nStackTrace: $st');
       state = AsyncValue.error(e, st);
     }
   }

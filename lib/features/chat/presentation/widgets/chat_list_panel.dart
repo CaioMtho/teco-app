@@ -19,12 +19,15 @@ class _ChatListPanelState extends ConsumerState<ChatListPanel> {
   @override
   void initState() {
     super.initState();
+    debugPrint('[ChatListPanel] initState chamado');
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      debugPrint('[ChatListPanel] Post frame callback: iniciando load de chats');
       ref.read(chatListNotifierProvider.notifier).load();
     });
   }
 
   void _openFilterDialog() async {
+    debugPrint('[ChatListPanel] Abrindo dialog de filtros');
     final result = await showModalBottomSheet<Map<String, bool>>(
       context: context,
       isScrollControlled: true,
@@ -90,15 +93,19 @@ class _ChatListPanelState extends ConsumerState<ChatListPanel> {
     );
 
     if (result != null) {
+      debugPrint('[ChatListPanel] Filtros aplicados: mensagens=${ result['hasMessages']}, avatar=${result['hasAvatar']}');
       setState(() {
         _onlyWithMessages = result['hasMessages'] ?? false;
         _onlyWithAvatar = result['hasAvatar'] ?? false;
       });
+    } else {
+      debugPrint('[ChatListPanel] Dialog de filtros cancelado');
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('[ChatListPanel] build chamado');
     final state = ref.watch(chatListNotifierProvider);
     final theme = Theme.of(context);
 
@@ -147,11 +154,19 @@ class _ChatListPanelState extends ConsumerState<ChatListPanel> {
           padding: const EdgeInsets.all(12),
           child: state.when(
             data: (chats) {
+              debugPrint('[ChatListPanel] Estado: sucesso com ${chats.length} chats');
               final filtered = _applyFilters(chats);
+              debugPrint('[ChatListPanel] Após filtros: ${filtered.length} chats exibidos');
               return _buildList(filtered);
             },
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, st) => Center(child: Text('Erro ao carregar chats', style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white70))),
+            loading: () {
+              debugPrint('[ChatListPanel] Estado: carregando...');
+              return const Center(child: CircularProgressIndicator());
+            },
+            error: (e, st) {
+              debugPrint('[ChatListPanel] Estado: erro\nStackTrace: $st');
+              return Center(child: Text('Erro ao carregar chats: $e', style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white70)));
+            },
           ),
         ),
       ),
@@ -174,15 +189,25 @@ class _ChatListPanelState extends ConsumerState<ChatListPanel> {
   }
 
   List<ChatEntity> _applyFilters(List<ChatEntity> chats) {
+    debugPrint('[ChatListPanel] Aplicando filtros: search="$_search", onlyMessages=$_onlyWithMessages, onlyAvatar=$_onlyWithAvatar');
     return chats.where((c) {
-      if (_onlyWithMessages && (c.lastMessage == null)) return false;
-      if (_onlyWithAvatar && (c.participantAvatarUrl == null || c.participantAvatarUrl!.isEmpty)) return false;
+      if (_onlyWithMessages && (c.lastMessage == null)) {
+        debugPrint('[ChatListPanel] Chat filtrado (sem mensagens): ${c.participantName}');
+        return false;
+      }
+      if (_onlyWithAvatar && (c.participantAvatarUrl == null || c.participantAvatarUrl!.isEmpty)) {
+        debugPrint('[ChatListPanel] Chat filtrado (sem avatar): ${c.participantName}');
+        return false;
+      }
       if (_search.isNotEmpty) {
         final q = _search.toLowerCase();
         final inName = c.participantName.toLowerCase().contains(q);
         final inRequest = c.requestTitle.toLowerCase().contains(q);
         final inMessage = (c.lastMessage?.content ?? '').toLowerCase().contains(q);
-        if (!(inName || inRequest || inMessage)) return false;
+        if (!(inName || inRequest || inMessage)) {
+          debugPrint('[ChatListPanel] Chat filtrado (não atende busca): ${c.participantName}');
+          return false;
+        }
       }
       return true;
     }).toList();

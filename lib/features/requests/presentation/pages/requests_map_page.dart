@@ -37,6 +37,7 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
   @override
   void initState() {
     super.initState();
+    debugPrint('[RequestsMapPage] initState chamado');
     _loadMapData();
   }
 
@@ -67,6 +68,7 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
   }
 
   Future<void> _refreshMyOpenRequests({bool withLoadingState = false}) async {
+    debugPrint('[RequestsMapPage] Atualizando requisiç\u00f5es do usuário');
     if (withLoadingState) {
       setState(() {
         _isLoadingMyRequests = true;
@@ -74,9 +76,11 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
     }
 
     try {
+      debugPrint('[RequestsMapPage] Chamando use case getCurrentUserOpenRequests');
       final requests = await ref
           .read(getCurrentUserOpenRequestsUseCaseProvider)
           .call();
+      debugPrint('[RequestsMapPage] ${requests.length} requisiç\u00f5es do usuário carregadas');
 
       if (!mounted) {
         return;
@@ -85,7 +89,8 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
       setState(() {
         _currentUserOpenRequests = requests;
       });
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[RequestsMapPage] Erro ao carregar requisiç\u00f5es do usuário: $e');
       if (!mounted) {
         return;
       }
@@ -106,6 +111,7 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
 
 // Novo método _onCreateRequest:
 Future<void> _onCreateRequest() async {
+  debugPrint('[RequestsMapPage] Abrindo dialog de criar requisiç\u00e3o');
   final payload = await showModalBottomSheet<_RequestCreatePayload>(
     context: context,
     backgroundColor: const Color(0xFF222431),
@@ -117,8 +123,12 @@ Future<void> _onCreateRequest() async {
     ),
   );
 
-  if (payload == null) return;
+  if (payload == null) {
+    debugPrint('[RequestsMapPage] Criação de requisiç\u00e3o cancelada');
+    return;
+  }
 
+  debugPrint('[RequestsMapPage] Criando requisiç\u00e3o: ${payload.title}');
   try {
     await ref.read(createRequestUseCaseProvider).call(
       title: payload.title,
@@ -128,6 +138,7 @@ Future<void> _onCreateRequest() async {
       lat: payload.lat,
       lon: payload.lon,
     );
+    debugPrint('[RequestsMapPage] Requisiç\u00e3o criada com sucesso');
 
     await _loadMapData();
 
@@ -135,7 +146,8 @@ Future<void> _onCreateRequest() async {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Requisição criada com sucesso.')),
     );
-  } catch (_) {
+  } catch (e) {
+    debugPrint('[RequestsMapPage] Erro ao criar requisiç\u00e3o: $e');
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Não foi possível criar a requisição.')),
@@ -144,6 +156,7 @@ Future<void> _onCreateRequest() async {
   }
 
   Future<void> _onEditRequest(RequestEntity request) async {
+    debugPrint('[RequestsMapPage] Abrindo dialog de editar requisiç\u00e3o: ${request.title}');
     final payload = await showModalBottomSheet<_RequestEditPayload>(
       context: context,
       backgroundColor: const Color(0xFF222431),
@@ -153,9 +166,11 @@ Future<void> _onCreateRequest() async {
     );
 
     if (payload == null) {
+      debugPrint('[RequestsMapPage] Edição cancelada');
       return;
     }
 
+    debugPrint('[RequestsMapPage] Atualizando requisiç\u00e3o: ${payload.title}');
     try {
       await ref.read(updateCurrentUserRequestUseCaseProvider).call(
         requestId: request.id,
@@ -164,6 +179,7 @@ Future<void> _onCreateRequest() async {
         budgetRange: payload.budgetRange,
         isRemote: payload.isRemote,
       );
+      debugPrint('[RequestsMapPage] Requisiç\u00e3o atualizada com sucesso');
 
       await _loadMapData();
 
@@ -174,7 +190,8 @@ Future<void> _onCreateRequest() async {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Requisição atualizada com sucesso.')),
       );
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[RequestsMapPage] Erro ao atualizar requisiç\u00e3o: $e');
       if (!mounted) {
         return;
       }
@@ -188,6 +205,7 @@ Future<void> _onCreateRequest() async {
   }
 
   Future<void> _onDeleteRequest(RequestEntity request) async {
+    debugPrint('[RequestsMapPage] Solicitando confirmação para deletar: ${request.title}');
     final shouldDelete = await showDialog<bool>(
       context: context,
       builder: (context) {
@@ -215,13 +233,16 @@ Future<void> _onCreateRequest() async {
     );
 
     if (shouldDelete != true) {
+      debugPrint('[RequestsMapPage] Deleção cancelada');
       return;
     }
 
+    debugPrint('[RequestsMapPage] Deletando requisiç\u00e3o: ${request.title}');
     try {
       await ref.read(deleteCurrentUserRequestUseCaseProvider).call(
         requestId: request.id,
       );
+      debugPrint('[RequestsMapPage] Requisiç\u00e3o deletada com sucesso');
       await _loadMapData();
 
       if (!mounted) {
@@ -231,7 +252,8 @@ Future<void> _onCreateRequest() async {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Requisição excluída com sucesso.')),
       );
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[RequestsMapPage] Erro ao deletar requisiç\u00e3o: $e');
       if (!mounted) {
         return;
       }
@@ -262,6 +284,7 @@ Future<void> _onCreateRequest() async {
   }
 
   Future<void> _loadMapData() async {
+    debugPrint('[RequestsMapPage] Iniciando carregamento de dados do mapa');
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -269,25 +292,32 @@ Future<void> _onCreateRequest() async {
 
     try {
       final mainLocation = await _resolveMainLocation();
+      debugPrint('[RequestsMapPage] Localização principal obtida: (${mainLocation.latitude},${mainLocation.longitude})');
       String? nonBlockingErrorMessage;
 
       List<RequestEntity> openRequests = const [];
       try {
+        debugPrint('[RequestsMapPage] Buscando requisiç\u00f5es pr\u00f3ximas com raio de ${AppConstants.openRequestsRadiusKm}km');
         openRequests = await ref.read(getNearbyOpenRequestsUseCaseProvider).call(
           center: mainLocation,
           radiusKm: AppConstants.openRequestsRadiusKm,
         );
-      } catch (_) {
+        debugPrint('[RequestsMapPage] ${openRequests.length} requisiç\u00f5es pr\u00f3ximas carregadas');
+      } catch (e) {
+        debugPrint('[RequestsMapPage] Erro ao carregar requisiç\u00f5es pr\u00f3ximas: $e');
         nonBlockingErrorMessage =
             'Nao foi possível carregar requisições próximas no momento.';
       }
 
       List<RequestEntity> currentUserOpenRequests = const [];
       try {
+        debugPrint('[RequestsMapPage] Carregando requisiç\u00f5es do usuário');
         currentUserOpenRequests = await ref
             .read(getCurrentUserOpenRequestsUseCaseProvider)
             .call();
-      } catch (_) {
+        debugPrint('[RequestsMapPage] ${currentUserOpenRequests.length} requisiç\u00f5es do usuário carregadas');
+      } catch (e) {
+        debugPrint('[RequestsMapPage] Erro ao carregar requisiç\u00f5es do usuário: $e');
         currentUserOpenRequests = const [];
       }
 
@@ -297,6 +327,7 @@ Future<void> _onCreateRequest() async {
         for (final request in openRequests) {
           if (request.id == selectedRequestId) {
             refreshedSelectedRequest = request;
+            debugPrint('[RequestsMapPage] Requisição selecionada atualizada');
             break;
           }
         }
@@ -314,8 +345,10 @@ Future<void> _onCreateRequest() async {
         _errorMessage = nonBlockingErrorMessage;
       });
 
+      debugPrint('[RequestsMapPage] Dados do mapa atualizados. Total: ${openRequests.length} abertas, ${currentUserOpenRequests.length} minhas');
       _mapController.move(_mainLocation, 12.5);
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[RequestsMapPage] Erro ao carregar dados do mapa: $e');
       if (!mounted) {
         return;
       }
