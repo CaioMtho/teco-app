@@ -9,6 +9,7 @@ import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../domain/entities/request_entity.dart';
 import '../providers/requests_providers.dart';
 import '../../../profile/presentation/pages/profile_page.dart';
+import '../../../chat/presentation/widgets/chat_list_panel.dart';
 
 class RequestsMapPage extends ConsumerStatefulWidget {
   const RequestsMapPage({super.key});
@@ -16,6 +17,8 @@ class RequestsMapPage extends ConsumerStatefulWidget {
   @override
   ConsumerState<RequestsMapPage> createState() => _RequestsMapPageState();
 }
+
+
 
 class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
   static const LatLng _defaultMapCenter = LatLng(-23.55052, -46.633308);
@@ -602,7 +605,19 @@ class _TopBar extends StatelessWidget {
             _TopBarAction(
               icon: Icons.chat_bubble_outline_rounded,
               tooltip: 'Chat',
-              onTap: () {},
+              onTap: () {
+                Navigator.of(context).push(PageRouteBuilder(
+                  opaque: false,
+                  pageBuilder: (context, animation, secondaryAnimation) => const ChatListPanel(),
+                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                    final slide = Tween<Offset>(begin: const Offset(-1, 0), end: Offset.zero).animate(animation);
+                    return SlideTransition(
+                      position: slide,
+                      child: child,
+                    );
+                  },
+                ));
+              },
               color: colorScheme.onPrimary,
             ),
             const Spacer(),
