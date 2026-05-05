@@ -11,7 +11,7 @@ class ChatMessagesRemoteDataSource {
     debugPrint('[ChatMessagesRemoteDataSource] Iniciando carregamento de mensagens para chat: $chatId');
     try {
       final client = SupabaseService.client;
-      final response = await client
+        final response = await client
           .from('messages')
           .select()
           .eq('chat_id', chatId)

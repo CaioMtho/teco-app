@@ -119,6 +119,9 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
   StreamSubscription<MessageEntity>? _messagesSubscription;
   StreamSubscription<ProposalEntity>? _proposalsSubscription;
   bool _isSubscribed = false;
+  final List<MessageEntity> _pendingMessageUpdates = [];
+  final List<ProposalEntity> _pendingProposalUpdates = [];
+  final Set<String> _pendingRemovedProposalIds = <String>{};
 
   Future<void> load(String chatId, String requestId) async {
     debugPrint('[ChatDetailNotifier] Carregando chat $chatId e request $requestId');
@@ -132,9 +135,17 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       final proposals = await _getProposalsByRequest.call(requestId);
 
       state = state.copyWith(
-        messages: AsyncValue.data(messages),
-        proposals: AsyncValue.data(proposals),
+        messages: AsyncValue.data(_mergeAndSortMessages(messages, _pendingMessageUpdates)),
+        proposals: AsyncValue.data(
+          _mergeAndSortProposals(
+            proposals.where((proposal) => !_pendingRemovedProposalIds.contains(proposal.id)).toList(),
+            _pendingProposalUpdates,
+          ),
+        ),
       );
+      _pendingMessageUpdates.clear();
+      _pendingProposalUpdates.clear();
+      _pendingRemovedProposalIds.clear();
 
       debugPrint('[ChatDetailNotifier] Carregamento concluído: ${messages.length} mensagens, ${proposals.length} propostas');
     } catch (e, st) {
@@ -160,10 +171,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       _messagesSubscription = _messagesRepository.listenToChatMessages(chatId).listen(
         (message) {
           debugPrint('[ChatDetailNotifier] Mensagem realtime recebida: ${message.id}');
-          state.messages.whenData((messages) {
-            final updated = _updateOrAddMessage(messages, message);
-            state = state.copyWith(messages: AsyncValue.data(updated));
-          });
+          _applyMessageUpdate(message);
         },
         onError: (e, st) {
           debugPrint('[ChatDetailNotifier] Erro no listener de mensagens: $e');
@@ -173,10 +181,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       _proposalsSubscription = _proposalsRepository.listenToChatProposals(requestId).listen(
         (proposal) {
           debugPrint('[ChatDetailNotifier] Proposta realtime recebida: ${proposal.id}');
-          state.proposals.whenData((proposals) {
-            final updated = _updateOrAddProposal(proposals, proposal);
-            state = state.copyWith(proposals: AsyncValue.data(updated));
-          });
+          _applyProposalUpdate(proposal);
         },
         onError: (e, st) {
           debugPrint('[ChatDetailNotifier] Erro no listener de propostas: $e');
@@ -201,9 +206,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     debugPrint('[ChatDetailNotifier] Enviando mensagem para chat $chatId');
     try {
       final message = await _sendMessage.call(chatId, content);
-      state.messages.whenData((messages) {
-        state = state.copyWith(messages: AsyncValue.data([...messages, message]));
-      });
+      _applyMessageUpdate(message);
       debugPrint('[ChatDetailNotifier] Mensagem enviada com sucesso');
     } catch (e, st) {
       debugPrint('[ChatDetailNotifier] Erro ao enviar mensagem: $e\nStackTrace: $st');
@@ -219,9 +222,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
         amount: amount,
         message: message,
       );
-      state.proposals.whenData((proposals) {
-        state = state.copyWith(proposals: AsyncValue.data([...proposals, proposal]));
-      });
+      _applyProposalUpdate(proposal);
       debugPrint('[ChatDetailNotifier] Proposta criada com sucesso');
     } catch (e, st) {
       debugPrint('[ChatDetailNotifier] Erro ao criar proposta: $e\nStackTrace: $st');
@@ -233,10 +234,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     debugPrint('[ChatDetailNotifier] Aceitando proposta $proposalId');
     try {
       final updated = await _acceptProposal.call(proposalId);
-      state.proposals.whenData((proposals) {
-        final newList = proposals.map((p) => p.id == proposalId ? updated : p).toList();
-        state = state.copyWith(proposals: AsyncValue.data(newList));
-      });
+      _applyProposalUpdate(updated);
       debugPrint('[ChatDetailNotifier] Proposta aceita com sucesso');
     } catch (e, st) {
       debugPrint('[ChatDetailNotifier] Erro ao aceitar proposta: $e\nStackTrace: $st');
@@ -248,10 +246,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     debugPrint('[ChatDetailNotifier] Recusando proposta $proposalId');
     try {
       await _declineProposal.call(proposalId);
-      state.proposals.whenData((proposals) {
-        final newList = proposals.where((p) => p.id != proposalId).toList();
-        state = state.copyWith(proposals: AsyncValue.data(newList));
-      });
+      _removeProposal(proposalId);
       debugPrint('[ChatDetailNotifier] Proposta recusada com sucesso');
     } catch (e, st) {
       debugPrint('[ChatDetailNotifier] Erro ao recusar proposta: $e\nStackTrace: $st');
@@ -259,24 +254,76 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     }
   }
 
-  List<MessageEntity> _updateOrAddMessage(List<MessageEntity> messages, MessageEntity newMessage) {
-    final index = messages.indexWhere((m) => m.id == newMessage.id);
-    if (index >= 0) {
-      final updated = messages.toList();
-      updated[index] = newMessage;
-      return updated;
+  void _applyMessageUpdate(MessageEntity message) {
+    final currentMessages = state.messages.valueOrNull;
+    if (currentMessages == null) {
+      _pendingMessageUpdates.removeWhere((item) => item.id == message.id);
+      _pendingMessageUpdates.add(message);
+      return;
     }
-    return [...messages, newMessage];
+
+    final updated = _mergeAndSortMessages(currentMessages, [message]);
+    state = state.copyWith(messages: AsyncValue.data(updated));
   }
 
-  List<ProposalEntity> _updateOrAddProposal(List<ProposalEntity> proposals, ProposalEntity newProposal) {
-    final index = proposals.indexWhere((p) => p.id == newProposal.id);
-    if (index >= 0) {
-      final updated = proposals.toList();
-      updated[index] = newProposal;
-      return updated;
+  void _applyProposalUpdate(ProposalEntity proposal) {
+    _pendingRemovedProposalIds.remove(proposal.id);
+    final currentProposals = state.proposals.valueOrNull;
+    if (currentProposals == null) {
+      _pendingProposalUpdates.removeWhere((item) => item.id == proposal.id);
+      _pendingProposalUpdates.add(proposal);
+      return;
     }
-    return [...proposals, newProposal];
+
+    final updated = _mergeAndSortProposals(currentProposals, [proposal]);
+    state = state.copyWith(proposals: AsyncValue.data(updated));
+  }
+
+  void _removeProposal(String proposalId) {
+    _pendingRemovedProposalIds.add(proposalId);
+    final currentProposals = state.proposals.valueOrNull;
+    if (currentProposals == null) {
+      _pendingProposalUpdates.removeWhere((item) => item.id == proposalId);
+      return;
+    }
+
+    final updated = currentProposals.where((proposal) => proposal.id != proposalId).toList();
+    state = state.copyWith(proposals: AsyncValue.data(updated));
+  }
+
+  List<MessageEntity> _mergeAndSortMessages(
+    List<MessageEntity> base,
+    List<MessageEntity> updates,
+  ) {
+    final merged = <String, MessageEntity>{
+      for (final message in base) message.id: message,
+      for (final message in updates) message.id: message,
+    };
+
+    final sorted = merged.values.toList()
+      ..sort((a, b) => _compareDateTimeAscending(a.createdAt, b.createdAt));
+    return sorted;
+  }
+
+  List<ProposalEntity> _mergeAndSortProposals(
+    List<ProposalEntity> base,
+    List<ProposalEntity> updates,
+  ) {
+    final merged = <String, ProposalEntity>{
+      for (final proposal in base) proposal.id: proposal,
+      for (final proposal in updates) proposal.id: proposal,
+    };
+
+    final sorted = merged.values.toList()
+      ..sort((a, b) => _compareDateTimeAscending(a.createdAt, b.createdAt));
+    return sorted;
+  }
+
+  int _compareDateTimeAscending(DateTime? a, DateTime? b) {
+    if (a == null && b == null) return 0;
+    if (a == null) return -1;
+    if (b == null) return 1;
+    return a.compareTo(b);
   }
 }
 

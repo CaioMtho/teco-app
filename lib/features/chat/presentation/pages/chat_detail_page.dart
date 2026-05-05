@@ -171,7 +171,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
         backgroundColor: const Color(0xDD222431),
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
+          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
         title: Column(
@@ -219,7 +219,6 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
                   }
 
                   return ListView.separated(
-                    reverse: true,
                     padding: const EdgeInsets.all(12),
                     itemCount: items.length,
                     separatorBuilder: (_, _) => const SizedBox(height: 8),
