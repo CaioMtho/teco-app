@@ -72,6 +72,74 @@ class ChatRemoteDataSource {
     return <Map<String, dynamic>>[];
   }
 
+  Future<ChatEntity> createChatWithMessage({
+    required String requestId,
+    required String requestTitle,
+    required String requesterId,
+    required String providerId,
+    required String participantId,
+    required String participantName,
+    String? participantAvatarUrl,
+    required String messageContent,
+  }) async {
+    debugPrint('[ChatRemoteDataSource] Criando novo chat para request: $requestId');
+    final client = SupabaseService.client;
+    final userId = client.auth.currentUser?.id;
+    if (userId == null) {
+      throw StateError('No authenticated user found');
+    }
+
+    try {
+      // 1) Criar chat
+      final chatResponse = await client
+          .from('chats')
+          .insert({
+            'request_id': requestId,
+            'requester_id': requesterId,
+            'provider_id': providerId,
+          })
+          .select()
+          .single();
+
+      final chatId = chatResponse['id']?.toString() ?? '';
+      debugPrint('[ChatRemoteDataSource] Chat criado com sucesso: $chatId');
+
+      // 2) Criar primeira mensagem
+      await client.from('messages').insert({
+        'chat_id': chatId,
+        'sender_id': userId,
+        'content': messageContent,
+      });
+      debugPrint('[ChatRemoteDataSource] Mensagem inicial enviada');
+
+      // 3) Retornar ChatEntity
+      return ChatEntity(
+        id: chatId,
+        requestId: requestId,
+        requestTitle: requestTitle,
+        requesterId: requesterId,
+        providerId: providerId,
+        participantId: participantId,
+        participantName: participantName,
+        participantAvatarUrl: participantAvatarUrl,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        deletedAt: null,
+        lastMessage: MessagePreview(
+          id: '',
+          content: messageContent,
+          senderId: userId,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+          deletedAt: null,
+        ),
+      );
+    } catch (e, st) {
+      debugPrint('[ChatRemoteDataSource] Erro ao criar chat com mensagem: $e\nStackTrace: $st');
+      rethrow;
+    }
+  }
+
   DateTime? _dateFromDynamic(dynamic value) {
     if (value is DateTime) return value;
     if (value is String) return DateTime.tryParse(value);

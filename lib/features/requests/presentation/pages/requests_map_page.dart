@@ -10,6 +10,8 @@ import '../../domain/entities/request_entity.dart';
 import '../providers/requests_providers.dart';
 import '../../../profile/presentation/pages/profile_page.dart';
 import '../../../chat/presentation/widgets/chat_list_panel.dart';
+import '../../../chat/presentation/widgets/initial_chat_message_modal.dart';
+import '../../../chat/presentation/providers/chat_providers.dart';
 
 class RequestsMapPage extends ConsumerStatefulWidget {
   const RequestsMapPage({super.key});
@@ -65,6 +67,94 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
     setState(() {
       _isMyRequestsPanelOpen = false;
     });
+  }
+
+  Future<void> _onCreateChat() async {
+    if (_selectedRequest == null) return;
+
+    final request = _selectedRequest!;
+    debugPrint('[RequestsMapPage] Abrindo modal para criar chat para request: ${request.id}');
+
+    final authState = ref.read(authControllerProvider).valueOrNull;
+    final profile = authState?.profile;
+    final currentUserId = authState?.user?.id;
+
+    if (profile == null || currentUserId == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Erro ao obter informações do usuário')),
+      );
+      return;
+    }
+
+    // Verificar se é provider
+    if (profile.type != 'provider') {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Somente prestadores de serviço podem iniciar chats com clientes'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    // Validar campos obrigatórios do request
+    final requesterId = request.requesterId;
+    if (requesterId == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Erro: requester não identificado')),
+      );
+      return;
+    }
+
+    // Abrir modal para mensagem inicial
+    final messageContent = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: const Color(0xFF222431),
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => const InitialChatMessageModal(),
+    );
+
+    if (messageContent == null || messageContent.isEmpty) {
+      debugPrint('[RequestsMapPage] Criação de chat cancelada');
+      return;
+    }
+
+    debugPrint('[RequestsMapPage] Criando chat com mensagem inicial');
+    try {
+      await ref.read(createChatWithMessageUseCaseProvider).call(
+        requestId: request.id,
+        requestTitle: request.title,
+        requesterId: requesterId,
+        providerId: currentUserId,
+        participantId: requesterId,
+        participantName: '', // será preenchido pelo backend
+        messageContent: messageContent,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Chat criado com sucesso!')),
+      );
+
+      // Fechar modal de request
+      setState(() {
+        _selectedRequest = null;
+      });
+
+      // Recarregar chats
+      ref.read(chatListNotifierProvider.notifier).load();
+    } catch (e) {
+      debugPrint('[RequestsMapPage] Erro ao criar chat: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não foi possível criar o chat')),
+      );
+    }
   }
 
   Future<void> _refreshMyOpenRequests({bool withLoadingState = false}) async {
@@ -414,6 +504,8 @@ Future<void> _onCreateRequest() async {
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authControllerProvider).valueOrNull;
+    final profileType = authState?.profile?.type ?? '';
+    final isProvider = profileType == 'provider';
     final profileName = (authState?.profile?.fullName ?? '').trim();
     final avatarInitial =
         profileName.isNotEmpty ? profileName.substring(0, 1).toUpperCase() : 'U';
@@ -510,6 +602,8 @@ Future<void> _onCreateRequest() async {
                         key: ValueKey(_selectedRequest!.id),
                         request: _selectedRequest!,
                         onClose: _onCloseRequestModal,
+                        isProvider: isProvider,
+                        onCreateChat: _onCreateChat,
                       ),
               ),
             ),
@@ -828,10 +922,14 @@ class _RequestDetailsModal extends StatelessWidget {
     super.key,
     required this.request,
     required this.onClose,
+    required this.isProvider,
+    required this.onCreateChat,
   });
 
   final RequestEntity request;
   final VoidCallback onClose;
+  final bool isProvider;
+  final Future<void> Function() onCreateChat;
 
   @override
   Widget build(BuildContext context) {
@@ -887,13 +985,20 @@ class _RequestDetailsModal extends StatelessWidget {
             const SizedBox(height: 14),
             Align(
               alignment: Alignment.centerLeft,
-              child: FilledButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.chat_bubble_outline_rounded),
-                label: const Text('Criar chat'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: colorScheme.primary,
-                  foregroundColor: colorScheme.onPrimary,
+              child: Tooltip(
+                message: isProvider
+                    ? ''
+                    : 'Somente prestadores de serviço podem iniciar chats',
+                child: FilledButton.icon(
+                  onPressed: isProvider ? onCreateChat : null,
+                  icon: const Icon(Icons.chat_bubble_outline_rounded),
+                  label: const Text('Criar chat'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: colorScheme.primary,
+                    foregroundColor: colorScheme.onPrimary,
+                    disabledBackgroundColor: Colors.white12,
+                    disabledForegroundColor: Colors.white38,
+                  ),
                 ),
               ),
             ),

@@ -1,19 +1,12 @@
-import '../../domain/entities/chat_entity.dart';
-import '../../domain/repositories/chats_repository.dart';
-import '../datasources/chat_remote_datasource.dart';
+import '../entities/chat_entity.dart';
+import '../repositories/chats_repository.dart';
 
-class ChatsRepositoryImpl implements ChatsRepository {
-  final ChatRemoteDataSource _remote;
+class CreateChatWithMessageUseCase {
+  final ChatsRepository _repository;
 
-  ChatsRepositoryImpl(this._remote);
+  CreateChatWithMessageUseCase(this._repository);
 
-  @override
-  Future<List<ChatEntity>> getUserChats() {
-    return _remote.getUserChats();
-  }
-
-  @override
-  Future<ChatEntity> createChatWithMessage({
+  Future<ChatEntity> call({
     required String requestId,
     required String requestTitle,
     required String requesterId,
@@ -23,7 +16,7 @@ class ChatsRepositoryImpl implements ChatsRepository {
     String? participantAvatarUrl,
     required String messageContent,
   }) {
-    return _remote.createChatWithMessage(
+    return _repository.createChatWithMessage(
       requestId: requestId,
       requestTitle: requestTitle,
       requesterId: requesterId,

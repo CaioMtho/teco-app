@@ -5,6 +5,7 @@ import '../../data/datasources/chat_remote_datasource.dart';
 import '../../data/repositories/chats_repository_impl.dart';
 import '../../domain/repositories/chats_repository.dart';
 import '../../domain/usecases/get_user_chats_usecase.dart';
+import '../../domain/usecases/create_chat_with_message_usecase.dart';
 import '../../domain/entities/chat_entity.dart';
 
 final chatRemoteDataSourceProvider = Provider<ChatRemoteDataSource>((ref) {
@@ -17,6 +18,10 @@ final chatsRepositoryProvider = Provider<ChatsRepository>((ref) {
 
 final getUserChatsUseCaseProvider = Provider<GetUserChatsUseCase>((ref) {
   return GetUserChatsUseCase(ref.read(chatsRepositoryProvider));
+});
+
+final createChatWithMessageUseCaseProvider = Provider<CreateChatWithMessageUseCase>((ref) {
+  return CreateChatWithMessageUseCase(ref.read(chatsRepositoryProvider));
 });
 
 class ChatListNotifier extends StateNotifier<AsyncValue<List<ChatEntity>>> {

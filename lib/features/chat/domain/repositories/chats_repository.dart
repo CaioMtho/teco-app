@@ -2,6 +2,16 @@ import '../entities/chat_entity.dart';
 
 abstract class ChatsRepository {
   Future<List<ChatEntity>> getUserChats();
+  Future<ChatEntity> createChatWithMessage({
+    required String requestId,
+    required String requestTitle,
+    required String requesterId,
+    required String providerId,
+    required String participantId,
+    required String participantName,
+    String? participantAvatarUrl,
+    required String messageContent,
+  });
 }
 
 abstract class ChatMessagesRepository {
