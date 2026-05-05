@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/entities/chat_entity.dart';
+import '../pages/chat_detail_page.dart';
 import '../providers/chat_providers.dart';
 
 class ChatListPanel extends ConsumerStatefulWidget {
@@ -231,63 +232,78 @@ class _ChatListItem extends StatelessWidget {
                 : last.content!));
     final initials = _initialsFromName(chat.participantName);
 
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1B1B20),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white10),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: const Color(0xFF9A7BFF),
-            backgroundImage: chat.participantAvatarUrl == null || chat.participantAvatarUrl!.isEmpty
-                ? null
-                : NetworkImage(chat.participantAvatarUrl!),
-            child: chat.participantAvatarUrl == null || chat.participantAvatarUrl!.isEmpty
-                ? Text(
-                    initials,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-                  )
-                : null,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  chat.participantName,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                      ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  chat.requestTitle,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.white54,
-                        fontWeight: FontWeight.w600,
-                      ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  content,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white70),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+    return GestureDetector(
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => ChatDetailPage(
+              chatId: chat.id,
+              requestId: chat.requestId,
+              participantName: chat.participantName,
+              participantAvatarUrl: chat.participantAvatarUrl,
+              requestTitle: chat.requestTitle,
             ),
           ),
-          const SizedBox(width: 8),
-          const Icon(Icons.chevron_right_rounded, color: Colors.white24),
-        ],
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1B1B20),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 20,
+              backgroundColor: const Color(0xFF9A7BFF),
+              backgroundImage: chat.participantAvatarUrl == null || chat.participantAvatarUrl!.isEmpty
+                  ? null
+                  : NetworkImage(chat.participantAvatarUrl!),
+              child: chat.participantAvatarUrl == null || chat.participantAvatarUrl!.isEmpty
+                  ? Text(
+                      initials,
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    chat.participantName,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    chat.requestTitle,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.white54,
+                          fontWeight: FontWeight.w600,
+                        ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    content,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white70),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(Icons.chevron_right_rounded, color: Colors.white24),
+          ],
+        ),
       ),
     );
   }
