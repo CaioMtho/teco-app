@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -113,6 +115,11 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
   final ChatMessagesRepository _messagesRepository;
   final ProposalsRepository _proposalsRepository;
 
+  // Subscription management
+  StreamSubscription<MessageEntity>? _messagesSubscription;
+  StreamSubscription<ProposalEntity>? _proposalsSubscription;
+  bool _isSubscribed = false;
+
   Future<void> load(String chatId, String requestId) async {
     debugPrint('[ChatDetailNotifier] Carregando chat $chatId e request $requestId');
     try {
@@ -141,8 +148,16 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
 
   Future<void> subscribeToUpdates(String chatId, String requestId) async {
     debugPrint('[ChatDetailNotifier] Abrindo realtime listeners para chat $chatId e request $requestId');
+    
+    // Avoid duplicate subscriptions
+    if (_isSubscribed) {
+      debugPrint('[ChatDetailNotifier] Já inscrito. Ignorando segunda chamada.');
+      return;
+    }
+    _isSubscribed = true;
+
     try {
-      _messagesRepository.listenToChatMessages(chatId).listen(
+      _messagesSubscription = _messagesRepository.listenToChatMessages(chatId).listen(
         (message) {
           debugPrint('[ChatDetailNotifier] Mensagem realtime recebida: ${message.id}');
           state.messages.whenData((messages) {
@@ -155,7 +170,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
         },
       );
 
-      _proposalsRepository.listenToChatProposals(requestId).listen(
+      _proposalsSubscription = _proposalsRepository.listenToChatProposals(requestId).listen(
         (proposal) {
           debugPrint('[ChatDetailNotifier] Proposta realtime recebida: ${proposal.id}');
           state.proposals.whenData((proposals) {
@@ -169,7 +184,17 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       );
     } catch (e, st) {
       debugPrint('[ChatDetailNotifier] Erro ao abrir listeners: $e\nStackTrace: $st');
+      _isSubscribed = false;
     }
+  }
+
+  @override
+  void dispose() {
+    debugPrint('[ChatDetailNotifier] Cancelando subscrições realtime');
+    _messagesSubscription?.cancel();
+    _proposalsSubscription?.cancel();
+    _isSubscribed = false;
+    super.dispose();
   }
 
   Future<void> sendMessage(String chatId, String content) async {
