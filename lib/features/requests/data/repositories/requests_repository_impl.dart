@@ -78,6 +78,24 @@ class RequestsRepositoryImpl implements RequestsRepository {
   }
 
   @override
+  Future<void> updateRequestStatus({
+    required String requestId,
+    required String status,
+  }) async {
+    debugPrint('[RequestsRepository] Atualizando status da requisição: $requestId -> $status');
+    try {
+      await _remoteDataSource.updateRequestStatus(
+        requestId: requestId,
+        status: status,
+      );
+      debugPrint('[RequestsRepository] Status da requisição atualizado com sucesso');
+    } catch (e, st) {
+      debugPrint('[RequestsRepository] Erro ao atualizar status da requisição: $e\nStackTrace: $st');
+      rethrow;
+    }
+  }
+
+  @override
   Future<void> createRequest({
     required String title,
     String? description,

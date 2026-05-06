@@ -5,16 +5,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/datasources/chat_messages_remote_datasource.dart';
 import '../../data/datasources/proposals_remote_datasource.dart';
+import '../../data/datasources/transactions_remote_datasource.dart';
 import '../../data/repositories/chat_messages_repository_impl.dart';
 import '../../data/repositories/proposals_repository_impl.dart';
+import '../../data/repositories/transactions_repository_impl.dart';
 import '../../domain/entities/chat_entity.dart';
+import '../../domain/entities/transaction_entity.dart';
 import '../../domain/repositories/chats_repository.dart';
+import '../../domain/repositories/transactions_repository.dart';
 import '../../domain/usecases/accept_proposal_usecase.dart';
 import '../../domain/usecases/create_proposal_usecase.dart';
+import '../../domain/usecases/create_transaction_usecase.dart';
 import '../../domain/usecases/decline_proposal_usecase.dart';
 import '../../domain/usecases/get_chat_messages_usecase.dart';
 import '../../domain/usecases/get_proposals_by_request_usecase.dart';
+import '../../domain/usecases/get_transaction_by_proposal_usecase.dart';
 import '../../domain/usecases/send_message_usecase.dart';
+import '../../domain/usecases/update_transaction_status_usecase.dart';
+import '../../../requests/domain/usecases/update_request_status_usecase.dart';
+import '../../../requests/presentation/providers/requests_providers.dart' hide updateRequestStatusUseCaseProvider;
 
 // Datasource Providers
 final chatMessagesRemoteDataSourceProvider = Provider<ChatMessagesRemoteDataSource>((ref) {
@@ -25,6 +34,10 @@ final proposalsRemoteDataSourceProvider = Provider<ProposalsRemoteDataSource>((r
   return ProposalsRemoteDataSource();
 });
 
+final transactionsRemoteDataSourceProvider = Provider<TransactionsRemoteDataSource>((ref) {
+  return TransactionsRemoteDataSource();
+});
+
 // Repository Providers
 final chatMessagesRepositoryProvider = Provider<ChatMessagesRepository>((ref) {
   return ChatMessagesRepositoryImpl(ref.read(chatMessagesRemoteDataSourceProvider));
@@ -32,6 +45,10 @@ final chatMessagesRepositoryProvider = Provider<ChatMessagesRepository>((ref) {
 
 final proposalsRepositoryProvider = Provider<ProposalsRepository>((ref) {
   return ProposalsRepositoryImpl(ref.read(proposalsRemoteDataSourceProvider));
+});
+
+final transactionsRepositoryProvider = Provider<TransactionsRepository>((ref) {
+  return TransactionsRepositoryImpl(ref.read(transactionsRemoteDataSourceProvider));
 });
 
 // Use Case Providers
@@ -59,13 +76,31 @@ final getProposalsByRequestUseCaseProvider = Provider<GetProposalsByRequestUseCa
   return GetProposalsByRequestUseCase(ref.read(proposalsRepositoryProvider));
 });
 
+final createTransactionUseCaseProvider = Provider<CreateTransactionUseCase>((ref) {
+  return CreateTransactionUseCase(ref.read(transactionsRepositoryProvider));
+});
+
+final getTransactionByProposalUseCaseProvider = Provider<GetTransactionByProposalUseCase>((ref) {
+  return GetTransactionByProposalUseCase(ref.read(transactionsRepositoryProvider));
+});
+
+final updateTransactionStatusUseCaseProvider = Provider<UpdateTransactionStatusUseCase>((ref) {
+  return UpdateTransactionStatusUseCase(ref.read(transactionsRepositoryProvider));
+});
+
+final updateRequestStatusUseCaseProvider = Provider<UpdateRequestStatusUseCase>((ref) {
+  return UpdateRequestStatusUseCase(ref.read(requestsRepositoryProvider));
+});
+
 class ChatDetailState {
   final AsyncValue<List<MessageEntity>> messages;
   final AsyncValue<List<ProposalEntity>> proposals;
+  final AsyncValue<TransactionEntity?> paymentTransaction;
 
   const ChatDetailState({
     required this.messages,
     required this.proposals,
+    required this.paymentTransaction,
   });
 
   ProposalEntity? get acceptedProposal {
@@ -81,10 +116,12 @@ class ChatDetailState {
   ChatDetailState copyWith({
     AsyncValue<List<MessageEntity>>? messages,
     AsyncValue<List<ProposalEntity>>? proposals,
+    AsyncValue<TransactionEntity?>? paymentTransaction,
   }) {
     return ChatDetailState(
       messages: messages ?? this.messages,
       proposals: proposals ?? this.proposals,
+      paymentTransaction: paymentTransaction ?? this.paymentTransaction,
     );
   }
 }
@@ -97,12 +134,17 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     this._acceptProposal,
     this._declineProposal,
     this._getProposalsByRequest,
+    this._createTransaction,
+    this._getTransactionByProposal,
+    this._updateTransactionStatus,
+    this._updateRequestStatus,
     this._messagesRepository,
     this._proposalsRepository,
   ) : super(
     const ChatDetailState(
       messages: AsyncValue.loading(),
       proposals: AsyncValue.loading(),
+      paymentTransaction: AsyncValue.data(null),
     ),
   );
 
@@ -112,6 +154,10 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
   final AcceptProposalUseCase _acceptProposal;
   final DeclineProposalUseCase _declineProposal;
   final GetProposalsByRequestUseCase _getProposalsByRequest;
+  final CreateTransactionUseCase _createTransaction;
+  final GetTransactionByProposalUseCase _getTransactionByProposal;
+  final UpdateTransactionStatusUseCase _updateTransactionStatus;
+  final UpdateRequestStatusUseCase _updateRequestStatus;
   final ChatMessagesRepository _messagesRepository;
   final ProposalsRepository _proposalsRepository;
 
@@ -129,10 +175,17 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       state = state.copyWith(
         messages: const AsyncValue.loading(),
         proposals: const AsyncValue.loading(),
+        paymentTransaction: const AsyncValue.data(null),
       );
 
       final messages = await _getChatMessages.call(chatId);
       final proposals = await _getProposalsByRequest.call(requestId);
+      final acceptedProposal = proposals.where((proposal) => proposal.isAccepted).isNotEmpty
+          ? proposals.firstWhere((proposal) => proposal.isAccepted)
+          : null;
+      final paymentTransaction = acceptedProposal == null
+          ? null
+          : await _getTransactionByProposal.call(acceptedProposal.id);
 
       state = state.copyWith(
         messages: AsyncValue.data(_mergeAndSortMessages(messages, _pendingMessageUpdates)),
@@ -142,6 +195,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
             _pendingProposalUpdates,
           ),
         ),
+        paymentTransaction: AsyncValue.data(paymentTransaction),
       );
       _pendingMessageUpdates.clear();
       _pendingProposalUpdates.clear();
@@ -153,6 +207,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       state = state.copyWith(
         messages: AsyncValue.error(e, st),
         proposals: AsyncValue.error(e, st),
+        paymentTransaction: AsyncValue.error(e, st),
       );
     }
   }
@@ -254,6 +309,64 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     }
   }
 
+  Future<TransactionEntity> startPaymentForProposal(ProposalEntity proposal) async {
+    final currentTransaction = state.paymentTransaction.valueOrNull;
+    if (currentTransaction != null && currentTransaction.proposalId == proposal.id) {
+      return currentTransaction;
+    }
+
+    final transaction = await _createTransaction.call(
+      proposalId: proposal.id,
+      amount: proposal.amount,
+    );
+    state = state.copyWith(paymentTransaction: AsyncValue.data(transaction));
+    return transaction;
+  }
+
+  Future<TransactionEntity> confirmPayment({
+    required String requestId,
+    required TransactionEntity transaction,
+  }) async {
+    final updatedTransaction = await _updateTransactionStatus.call(
+      transactionId: transaction.id,
+      status: 'escrow',
+    );
+    await _updateRequestStatus.call(
+      requestId: requestId,
+      status: 'in_progress',
+    );
+    state = state.copyWith(paymentTransaction: AsyncValue.data(updatedTransaction));
+    return updatedTransaction;
+  }
+
+  Future<TransactionEntity> completeRequest({
+    required String requestId,
+    required TransactionEntity transaction,
+  }) async {
+    final updatedTransaction = await _updateTransactionStatus.call(
+      transactionId: transaction.id,
+      status: 'released',
+    );
+    await _updateRequestStatus.call(
+      requestId: requestId,
+      status: 'completed',
+    );
+    state = state.copyWith(paymentTransaction: AsyncValue.data(updatedTransaction));
+    return updatedTransaction;
+  }
+
+  Future<void> cancelUnpaidProposal({
+    required String requestId,
+    required String proposalId,
+  }) async {
+    await declineProposal(proposalId);
+    await _updateRequestStatus.call(
+      requestId: requestId,
+      status: 'open',
+    );
+    state = state.copyWith(paymentTransaction: const AsyncValue.data(null));
+  }
+
   void _applyMessageUpdate(MessageEntity message) {
     final currentMessages = state.messages.valueOrNull;
     if (currentMessages == null) {
@@ -335,6 +448,10 @@ final chatDetailNotifierProvider = StateNotifierProvider<ChatDetailNotifier, Cha
     ref.read(acceptProposalUseCaseProvider),
     ref.read(declineProposalUseCaseProvider),
     ref.read(getProposalsByRequestUseCaseProvider),
+    ref.read(createTransactionUseCaseProvider),
+    ref.read(getTransactionByProposalUseCaseProvider),
+    ref.read(updateTransactionStatusUseCaseProvider),
+    ref.read(updateRequestStatusUseCaseProvider),
     ref.read(chatMessagesRepositoryProvider),
     ref.read(proposalsRepositoryProvider),
   );

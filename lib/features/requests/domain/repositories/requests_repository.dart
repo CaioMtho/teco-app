@@ -18,6 +18,11 @@ abstract class RequestsRepository {
     required bool isRemote,
   });
 
+  Future<void> updateRequestStatus({
+    required String requestId,
+    required String status,
+  });
+
   Future<void> createRequest({
   required String title,
   String? description,

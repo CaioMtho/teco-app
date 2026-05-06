@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/entities/chat_entity.dart';
+import '../../domain/entities/transaction_entity.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../providers/chat_detail_providers.dart';
 
@@ -173,6 +174,27 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
     }
   }
 
+  Future<void> _showProposalPaymentSheet(
+    ProposalEntity proposal, {
+    required bool isRequester,
+  }) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF101114),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        return _ProposalPaymentSheet(
+          proposal: proposal,
+          requestId: widget.requestId,
+          isRequester: isRequester,
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final detailState = ref.watch(chatDetailNotifierProvider);
@@ -228,44 +250,49 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
                   return _StickyProposalHeader(
                     proposal: visibleProposal,
                     isRequester: isRequester,
+                    paymentTransaction: detailState.paymentTransaction.valueOrNull,
                     onAccept: () async {
+                      final messenger = ScaffoldMessenger.of(context);
                       try {
                         await ref.read(chatDetailNotifierProvider.notifier).acceptProposal(visibleProposal.id);
                         if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        messenger.showSnackBar(
                           const SnackBar(content: Text('Proposta aceita')),
                         );
+                        await _showProposalPaymentSheet(visibleProposal, isRequester: isRequester);
                       } catch (e) {
                         if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        messenger.showSnackBar(
                           SnackBar(content: Text('Erro: $e')),
                         );
                       }
                     },
                     onCancel: () async {
+                      final messenger = ScaffoldMessenger.of(context);
                       try {
                         await ref.read(chatDetailNotifierProvider.notifier).declineProposal(visibleProposal.id);
                         if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        messenger.showSnackBar(
                           const SnackBar(content: Text('Proposta cancelada')),
                         );
                       } catch (e) {
                         if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        messenger.showSnackBar(
                           SnackBar(content: Text('Erro: $e')),
                         );
                       }
                     },
                     onDecline: () async {
+                      final messenger = ScaffoldMessenger.of(context);
                       try {
                         await ref.read(chatDetailNotifierProvider.notifier).declineProposal(visibleProposal.id);
                         if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        messenger.showSnackBar(
                           const SnackBar(content: Text('Proposta recusada')),
                         );
                       } catch (e) {
                         if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        messenger.showSnackBar(
                           SnackBar(content: Text('Erro: $e')),
                         );
                       }
@@ -275,7 +302,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
                 return const SizedBox.shrink();
               },
               loading: () => const SizedBox.shrink(),
-              error: (_, __) => const SizedBox.shrink(),
+              error: (error, stackTrace) => const SizedBox.shrink(),
             ),
             // Messages ListView
             Expanded(
@@ -432,6 +459,7 @@ class _StickyProposalHeader extends StatelessWidget {
   const _StickyProposalHeader({
     required this.proposal,
     required this.isRequester,
+    required this.paymentTransaction,
     required this.onAccept,
     required this.onCancel,
     required this.onDecline,
@@ -439,6 +467,7 @@ class _StickyProposalHeader extends StatelessWidget {
 
   final ProposalEntity proposal;
   final bool isRequester;
+  final TransactionEntity? paymentTransaction;
   final VoidCallback onAccept;
   final VoidCallback onCancel;
   final VoidCallback onDecline;
@@ -446,12 +475,29 @@ class _StickyProposalHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isAccepted = proposal.isAccepted;
+    final transaction = paymentTransaction;
+    final isEscrow = transaction?.isEscrow ?? false;
+    final isReleased = transaction?.isReleased ?? false;
     final backgroundColor = isAccepted ? const Color(0xFF1B3A1B) : const Color(0xFF2A2F3E);
     final borderColor = isAccepted ? Colors.green : const Color(0xFF9A7BFF);
     final titleColor = isAccepted ? Colors.green : const Color(0xFF9A7BFF);
-    final title = isAccepted ? 'Proposta Aceita' : 'Proposta';
-    final statusLabel = isAccepted ? '✓ Aceita' : 'Pendente';
-    final statusBgColor = isAccepted ? const Color(0xFF22C55E) : const Color(0xFF9A7BFF).withValues(alpha: 0.2);
+    final title = isReleased
+      ? 'Tarefa concluída'
+      : isEscrow
+        ? 'Pagamento confirmado'
+        : isAccepted
+          ? 'Proposta aceita'
+          : 'Proposta';
+    final statusLabel = isReleased
+      ? '✓ Liberada'
+      : isEscrow
+        ? 'Em escrow'
+        : isAccepted
+          ? 'Pagamento pendente'
+          : 'Pendente';
+    final statusBgColor = (isReleased || isEscrow)
+      ? const Color(0xFF22C55E)
+      : const Color(0xFF9A7BFF).withValues(alpha: 0.2);
 
     return Container(
       margin: const EdgeInsets.all(12),
@@ -539,8 +585,209 @@ class _StickyProposalHeader extends StatelessWidget {
                 ),
               ),
             ],
+          ] else if (!isReleased) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: null,
+                style: FilledButton.styleFrom(
+                  backgroundColor: isEscrow ? const Color(0xFF22C55E) : const Color(0xFF9A7BFF),
+                ),
+                child: Text(
+                  isEscrow ? 'Aguardando conclusão' : 'Aguardando pagamento',
+                ),
+              ),
+            ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _ProposalPaymentSheet extends ConsumerStatefulWidget {
+  const _ProposalPaymentSheet({
+    required this.proposal,
+    required this.requestId,
+    required this.isRequester,
+  });
+
+  final ProposalEntity proposal;
+  final String requestId;
+  final bool isRequester;
+
+  @override
+  ConsumerState<_ProposalPaymentSheet> createState() => _ProposalPaymentSheetState();
+}
+
+class _ProposalPaymentSheetState extends ConsumerState<_ProposalPaymentSheet> {
+  bool _isBusy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(chatDetailNotifierProvider.notifier).startPaymentForProposal(widget.proposal);
+    });
+  }
+
+  Future<void> _confirmPayment(TransactionEntity transaction) async {
+    setState(() => _isBusy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(chatDetailNotifierProvider.notifier).confirmPayment(
+        requestId: widget.requestId,
+        transaction: transaction,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      messenger.showSnackBar(const SnackBar(content: Text('Pagamento confirmado')));
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text('Erro ao confirmar pagamento: $e')));
+    } finally {
+      if (mounted) {
+        setState(() => _isBusy = false);
+      }
+    }
+  }
+
+  Future<void> _completeTask(TransactionEntity transaction) async {
+    setState(() => _isBusy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(chatDetailNotifierProvider.notifier).completeRequest(
+        requestId: widget.requestId,
+        transaction: transaction,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      messenger.showSnackBar(const SnackBar(content: Text('Tarefa marcada como concluída')));
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text('Erro ao concluir tarefa: $e')));
+    } finally {
+      if (mounted) {
+        setState(() => _isBusy = false);
+      }
+    }
+  }
+
+  Future<void> _cancelUnpaid() async {
+    setState(() => _isBusy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(chatDetailNotifierProvider.notifier).cancelUnpaidProposal(
+        requestId: widget.requestId,
+        proposalId: widget.proposal.id,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      messenger.showSnackBar(const SnackBar(content: Text('Proposta cancelada')));
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text('Erro ao cancelar: $e')));
+    } finally {
+      if (mounted) {
+        setState(() => _isBusy = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final transaction = ref.watch(chatDetailNotifierProvider).paymentTransaction.valueOrNull;
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 16,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Pagamento da proposta',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: _isBusy ? null : () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close_rounded, color: Colors.white70),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'R\$ ${widget.proposal.amount.toStringAsFixed(2)}',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              transaction == null
+                  ? 'Preparando transação de pagamento.'
+                  : transaction.isEscrow
+                      ? 'Pagamento confirmado e request em andamento.'
+                      : transaction.isReleased
+                          ? 'Pagamento liberado.'
+                          : 'Pagamento aguardando confirmação.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white70),
+            ),
+            const SizedBox(height: 20),
+            if (transaction == null) ...[
+              const Center(child: CircularProgressIndicator()),
+            ] else if (transaction.isEscrow && widget.isRequester) ...[
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: _isBusy ? null : () => _completeTask(transaction),
+                  child: const Text('Marcar como concluída'),
+                ),
+              ),
+            ] else if (transaction.isPending) ...[
+              if (widget.isRequester) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: _isBusy ? null : () => _confirmPayment(transaction),
+                    child: const Text('Confirmar pagamento'),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: _isBusy ? null : _cancelUnpaid,
+                  style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent),
+                  child: const Text('Cancelar sem pagar'),
+                ),
+              ),
+            ] else ...[
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: null,
+                  child: const Text('Aguardando conclusão'),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

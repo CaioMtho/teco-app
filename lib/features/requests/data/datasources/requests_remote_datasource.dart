@@ -104,6 +104,25 @@ class RequestsRemoteDataSource {
     }
   }
 
+  Future<void> updateRequestStatus({
+    required String requestId,
+    required String status,
+  }) async {
+    debugPrint('[RequestsRemoteDataSource] Atualizando status da requisição: id=$requestId, status=$status');
+    try {
+      await SupabaseService.client
+          .from('requests')
+          .update({'status': status})
+          .eq('id', requestId)
+          .select('id')
+          .single();
+      debugPrint('[RequestsRemoteDataSource] Status da requisição atualizado com sucesso');
+    } catch (e, st) {
+      debugPrint('[RequestsRemoteDataSource] Erro ao atualizar status da requisição: $e\nStackTrace: $st');
+      rethrow;
+    }
+  }
+
   Future<void> deleteCurrentUserRequest({
     required String requestId,
   }) async {
