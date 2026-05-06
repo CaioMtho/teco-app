@@ -10,6 +10,7 @@ class ChatDetailPage extends ConsumerStatefulWidget {
     super.key,
     required this.chatId,
     required this.requestId,
+    required this.requesterId,
     required this.participantName,
     required this.participantAvatarUrl,
     required this.requestTitle,
@@ -17,6 +18,7 @@ class ChatDetailPage extends ConsumerStatefulWidget {
 
   final String chatId;
   final String requestId;
+  final String requesterId;
   final String participantName;
   final String? participantAvatarUrl;
   final String requestTitle;
@@ -29,6 +31,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
   late final TextEditingController _messageController;
   late final TextEditingController _proposalAmountController;
   late final TextEditingController _proposalMessageController;
+  late final ScrollController _listViewController;
 
   @override
   void initState() {
@@ -36,6 +39,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
     _messageController = TextEditingController();
     _proposalAmountController = TextEditingController();
     _proposalMessageController = TextEditingController();
+    _listViewController = ScrollController();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(chatDetailNotifierProvider.notifier).load(widget.chatId, widget.requestId);
@@ -48,6 +52,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
     _messageController.dispose();
     _proposalAmountController.dispose();
     _proposalMessageController.dispose();
+    _listViewController.dispose();
     super.dispose();
   }
 
@@ -59,12 +64,25 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
     final scaffold = ScaffoldMessenger.of(context);
     try {
       await ref.read(chatDetailNotifierProvider.notifier).sendMessage(widget.chatId, content);
+      _scrollToBottom();
     } catch (e) {
       if (!mounted) return;
       scaffold.showSnackBar(
         SnackBar(content: Text('Erro ao enviar mensagem: $e')),
       );
     }
+  }
+
+  void _scrollToBottom() {
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (_listViewController.hasClients) {
+        _listViewController.animateTo(
+          _listViewController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   void _showCreateProposalDialog() async {
@@ -195,76 +213,97 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
       body: SafeArea(
         child: Column(
           children: [
+            // Sticky proposal header
+            detailState.proposals.when(
+              data: (proposals) {
+                final acceptedProposal = detailState.acceptedProposal;
+                final pendingProposals = proposals.where((p) => p.isPending).toList();
+                final visibleProposal = acceptedProposal ?? (pendingProposals.isNotEmpty ? pendingProposals.first : null);
+
+                if (visibleProposal != null) {
+                  final isRequester = authState.whenData((state) {
+                    return state.user?.id == widget.requesterId;
+                  }).value ?? false;
+
+                  return _StickyProposalHeader(
+                    proposal: visibleProposal,
+                    isRequester: isRequester,
+                    onAccept: () async {
+                      try {
+                        await ref.read(chatDetailNotifierProvider.notifier).acceptProposal(visibleProposal.id);
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Proposta aceita')),
+                        );
+                      } catch (e) {
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Erro: $e')),
+                        );
+                      }
+                    },
+                    onCancel: () async {
+                      try {
+                        await ref.read(chatDetailNotifierProvider.notifier).declineProposal(visibleProposal.id);
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Proposta cancelada')),
+                        );
+                      } catch (e) {
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Erro: $e')),
+                        );
+                      }
+                    },
+                    onDecline: () async {
+                      try {
+                        await ref.read(chatDetailNotifierProvider.notifier).declineProposal(visibleProposal.id);
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Proposta recusada')),
+                        );
+                      } catch (e) {
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Erro: $e')),
+                        );
+                      }
+                    },
+                  );
+                }
+                return const SizedBox.shrink();
+              },
+              loading: () => const SizedBox.shrink(),
+              error: (_, __) => const SizedBox.shrink(),
+            ),
+            // Messages ListView
             Expanded(
               child: detailState.messages.when(
                 data: (messages) {
-                  final acceptedProposal = detailState.acceptedProposal;
-                  final proposals = detailState.proposals.value ?? [];
-                  final pendingProposals = proposals.where((p) => p.isPending).toList();
-
-                  final items = <({String type, dynamic data})>[
-                    if (acceptedProposal != null)
-                      (type: 'acceptedProposal', data: acceptedProposal),
-                    ...messages.map((m) => (type: 'message', data: m)),
-                    ...pendingProposals.map((p) => (type: 'proposal', data: p)),
-                  ];
+                  final items = messages.map((m) => (type: 'message', data: m)).toList();
 
                   if (items.isEmpty) {
                     return const Center(
                       child: Text(
-                        'Nenhuma mensagem ou proposta ainda',
+                        'Nenhuma mensagem ainda',
                         style: TextStyle(color: Colors.white70),
                       ),
                     );
                   }
 
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    _scrollToBottom();
+                  });
+
                   return ListView.separated(
+                    controller: _listViewController,
                     padding: const EdgeInsets.all(12),
                     itemCount: items.length,
                     separatorBuilder: (_, _) => const SizedBox(height: 8),
                     itemBuilder: (context, index) {
                       final item = items[index];
-                      if (item.type == 'message') {
-                        return _MessageBubble(message: item.data);
-                      } else if (item.type == 'proposal') {
-                        return _ProposalCard(
-                          proposal: item.data,
-                          onAccept: () async {
-                            try {
-                              await ref.read(chatDetailNotifierProvider.notifier).acceptProposal(item.data.id);
-                              if (!mounted) return;
-                              // ignore: use_build_context_synchronously
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Proposta aceita')),
-                              );
-                            } catch (e) {
-                              if (!mounted) return;
-                              // ignore: use_build_context_synchronously
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Erro: $e')),
-                              );
-                            }
-                          },
-                          onDecline: () async {
-                            try {
-                              await ref.read(chatDetailNotifierProvider.notifier).declineProposal(item.data.id);
-                              if (!mounted) return;
-                              // ignore: use_build_context_synchronously
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Proposta recusada')),
-                              );
-                            } catch (e) {
-                              if (!mounted) return;
-                              // ignore: use_build_context_synchronously
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Erro: $e')),
-                              );
-                            }
-                          },
-                        );
-                      } else {
-                        return _AcceptedProposalBanner(proposal: item.data);
-                      }
+                      return _MessageBubble(message: item.data);
                     },
                   );
                 },
@@ -355,7 +394,7 @@ class _MessageBubble extends ConsumerWidget {
       alignment: isOwn ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           color: isOwn ? const Color(0xFF9A7BFF) : const Color(0xFF2A2D3B),
           borderRadius: BorderRadius.circular(12),
@@ -389,25 +428,38 @@ class _MessageBubble extends ConsumerWidget {
   }
 }
 
-class _ProposalCard extends StatelessWidget {
-  const _ProposalCard({
+class _StickyProposalHeader extends StatelessWidget {
+  const _StickyProposalHeader({
     required this.proposal,
+    required this.isRequester,
     required this.onAccept,
+    required this.onCancel,
     required this.onDecline,
   });
 
   final ProposalEntity proposal;
+  final bool isRequester;
   final VoidCallback onAccept;
+  final VoidCallback onCancel;
   final VoidCallback onDecline;
 
   @override
   Widget build(BuildContext context) {
+    final isAccepted = proposal.isAccepted;
+    final backgroundColor = isAccepted ? const Color(0xFF1B3A1B) : const Color(0xFF2A2F3E);
+    final borderColor = isAccepted ? Colors.green : const Color(0xFF9A7BFF);
+    final titleColor = isAccepted ? Colors.green : const Color(0xFF9A7BFF);
+    final title = isAccepted ? 'Proposta Aceita' : 'Proposta';
+    final statusLabel = isAccepted ? '✓ Aceita' : 'Pendente';
+    final statusBgColor = isAccepted ? const Color(0xFF22C55E) : const Color(0xFF9A7BFF).withValues(alpha: 0.2);
+
     return Container(
+      margin: const EdgeInsets.all(12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF2A2F3E),
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF9A7BFF), width: 1.5),
+        border: Border.all(color: borderColor, width: 1.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -416,16 +468,19 @@ class _ProposalCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Proposta',
+                title,
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  color: const Color(0xFF9A7BFF),
+                  color: titleColor,
                   fontWeight: FontWeight.w700,
                 ),
               ),
               Chip(
-                label: const Text('Pendente'),
-                backgroundColor: const Color(0xFF9A7BFF).withValues(alpha: 0.2),
-                labelStyle: const TextStyle(color: Color(0xFF9A7BFF), fontSize: 12),
+                label: Text(statusLabel),
+                backgroundColor: statusBgColor,
+                labelStyle: TextStyle(
+                  color: isAccepted ? Colors.white : const Color(0xFF9A7BFF),
+                  fontSize: 12,
+                ),
               ),
             ],
           ),
@@ -444,85 +499,46 @@ class _ProposalCard extends StatelessWidget {
               style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white70),
             ),
           ],
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
+          if (!isAccepted) ...[
+            const SizedBox(height: 12),
+            if (isRequester) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: onDecline,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.redAccent,
+                        side: const BorderSide(color: Colors.redAccent),
+                      ),
+                      child: const Text('Recusar'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: onAccept,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF9A7BFF),
+                      ),
+                      child: const Text('Aceitar'),
+                    ),
+                  ),
+                ],
+              ),
+            ] else ...[
+              SizedBox(
+                width: double.infinity,
                 child: OutlinedButton(
-                  onPressed: onDecline,
+                  onPressed: onCancel,
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.redAccent,
                     side: const BorderSide(color: Colors.redAccent),
                   ),
-                  child: const Text('Recusar'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: FilledButton(
-                  onPressed: onAccept,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF9A7BFF),
-                  ),
-                  child: const Text('Aceitar'),
+                  child: const Text('Cancelar Proposta'),
                 ),
               ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AcceptedProposalBanner extends StatelessWidget {
-  const _AcceptedProposalBanner({required this.proposal});
-
-  final ProposalEntity proposal;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1B3A1B),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.green, width: 1.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Proposta Aceita',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  color: Colors.green,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const Chip(
-                label: Text('✓ Aceita'),
-                backgroundColor: Color(0xFF22C55E),
-                labelStyle: TextStyle(color: Colors.white, fontSize: 12),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'R\$ ${proposal.amount.toStringAsFixed(2)}',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: Colors.white,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          if (proposal.message != null && proposal.message!.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              proposal.message!,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white70),
-            ),
           ],
         ],
       ),

@@ -239,6 +239,7 @@ class _ChatListItem extends StatelessWidget {
             builder: (context) => ChatDetailPage(
               chatId: chat.id,
               requestId: chat.requestId,
+              requesterId: chat.requesterId,
               participantName: chat.participantName,
               participantAvatarUrl: chat.participantAvatarUrl,
               requestTitle: chat.requestTitle,
