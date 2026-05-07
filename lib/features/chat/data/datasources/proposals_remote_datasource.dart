@@ -65,15 +65,27 @@ class ProposalsRemoteDataSource {
     debugPrint('[ProposalsRemoteDataSource] Aceitando proposta: $proposalId');
     try {
       final client = SupabaseService.client;
-      final response = await client
+      final existingResponse = await client
+          .from('proposals')
+          .select()
+          .eq('id', proposalId)
+          .maybeSingle();
+
+      if (existingResponse == null) {
+        throw StateError('Proposal not found: $proposalId');
+      }
+
+      await client
           .from('proposals')
           .update({'status': 'accepted'})
-          .eq('id', proposalId)
-          .select()
-          .single();
+          .eq('id', proposalId);
 
       debugPrint('[ProposalsRemoteDataSource] Proposta aceita com sucesso');
-      return _mapRowToProposalEntity(response);
+      return _mapRowToProposalEntity({
+        ...existingResponse,
+        'status': 'accepted',
+        'updated_at': DateTime.now().toIso8601String(),
+      });
     } catch (e, st) {
       debugPrint('[ProposalsRemoteDataSource] Erro ao aceitar proposta: $e\nStackTrace: $st');
       rethrow;
