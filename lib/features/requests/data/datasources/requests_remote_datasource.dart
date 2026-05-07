@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../../../core/services/supabase_service.dart';
@@ -5,26 +6,42 @@ import '../../domain/entities/request_entity.dart';
 
 class RequestsRemoteDataSource {
   Future<List<RequestEntity>> getOpenRequests() async {
-    final response = await SupabaseService.client.rpc('list_requests_with_geojson');
-
-    final rows = List<Map<String, dynamic>>.from(response as List);
-
-    return rows.map(_mapRowToEntity).toList(growable: false);
+    debugPrint('[RequestsRemoteDataSource] Iniciando carregamento de requisições abertas');
+    try {
+      final response = await SupabaseService.client.rpc('list_requests_with_geojson');
+      final rows = List<Map<String, dynamic>>.from(response as List);
+      debugPrint('[RequestsRemoteDataSource] RPC retornou ${rows.length} requisições');
+      return rows.map(_mapRowToEntity).toList(growable: false);
+    } catch (e, st) {
+      debugPrint('[RequestsRemoteDataSource] Erro ao carregar requisições abertas: $e\nStackTrace: $st');
+      rethrow;
+    }
   }
 
   Future<List<RequestEntity>> getCurrentUserOpenRequests() async {
+    debugPrint('[RequestsRemoteDataSource] Iniciando carregamento de requisições do usuário atual');
     final userId = SupabaseService.client.auth.currentUser?.id;
     if (userId == null) {
+      debugPrint('[RequestsRemoteDataSource] Usuário não autenticado');
       throw StateError('No authenticated user found to load requests');
     }
+    debugPrint('[RequestsRemoteDataSource] userId obtido: $userId');
 
-    final response = await SupabaseService.client.rpc('list_requests_with_geojson');
-    final rows = List<Map<String, dynamic>>.from(response as List);
-
-    return rows
-        .where((row) => row['requester_id'] == userId && row['status'] == 'open')
-        .map(_mapRowToEntity)
-        .toList(growable: false);
+    try {
+      final response = await SupabaseService.client.rpc('list_requests_with_geojson');
+      final rows = List<Map<String, dynamic>>.from(response as List);
+      debugPrint('[RequestsRemoteDataSource] RPC retornou ${rows.length} requisições totais');
+      
+      final userRequests = rows
+          .where((row) => row['requester_id'] == userId && row['status'] == 'open')
+          .map(_mapRowToEntity)
+          .toList(growable: false);
+      debugPrint('[RequestsRemoteDataSource] Filtrado para ${userRequests.length} requisições do usuário');
+      return userRequests;
+    } catch (e, st) {
+      debugPrint('[RequestsRemoteDataSource] Erro ao carregar requisições do usuário: $e\nStackTrace: $st');
+      rethrow;
+    }
   }
 
   Future<void> createRequest({
@@ -35,15 +52,22 @@ class RequestsRemoteDataSource {
     required double lat,
     required double lon,
   }) async {
-    await SupabaseService.client.rpc('create_request_with_location', params: {
-      'p_title': title,
-      'p_description': description,
-      'p_status': 'open',
-      'p_budget_range': budgetRange,
-      'p_is_remote': isRemote,
-      'p_lat': lat,
-      'p_lon': lon,
-    });
+    debugPrint('[RequestsRemoteDataSource] Criando requisição: título=$title, remota=$isRemote, lat=$lat, lon=$lon');
+    try {
+      await SupabaseService.client.rpc('create_request_with_location', params: {
+        'p_title': title,
+        'p_description': description,
+        'p_status': 'open',
+        'p_budget_range': budgetRange,
+        'p_is_remote': isRemote,
+        'p_lat': lat,
+        'p_lon': lon,
+      });
+      debugPrint('[RequestsRemoteDataSource] Requisição criada com sucesso');
+    } catch (e, st) {
+      debugPrint('[RequestsRemoteDataSource] Erro ao criar requisição: $e\nStackTrace: $st');
+      rethrow;
+    }
   }
 
   Future<void> updateCurrentUserRequest({
@@ -53,43 +77,79 @@ class RequestsRemoteDataSource {
     String? budgetRange,
     required bool isRemote,
   }) async {
+    debugPrint('[RequestsRemoteDataSource] Atualizando requisição: id=$requestId, título=$title, remota=$isRemote');
     final userId = SupabaseService.client.auth.currentUser?.id;
     if (userId == null) {
+      debugPrint('[RequestsRemoteDataSource] Usuário não autenticado para atualizar');
       throw StateError('No authenticated user found to update request');
     }
 
-    await SupabaseService.client
-        .from('requests')
-        .update({
-          'title': title,
-          'description': description,
-          'budget_range': budgetRange,
-          'is_remote': isRemote,
-        })
-        .eq('id', requestId)
-        .eq('requester_id', userId)
-        .select('id')
-        .single();
+    try {
+      await SupabaseService.client
+          .from('requests')
+          .update({
+            'title': title,
+            'description': description,
+            'budget_range': budgetRange,
+            'is_remote': isRemote,
+          })
+          .eq('id', requestId)
+          .eq('requester_id', userId)
+          .select('id')
+          .single();
+      debugPrint('[RequestsRemoteDataSource] Requisição atualizada com sucesso');
+    } catch (e, st) {
+      debugPrint('[RequestsRemoteDataSource] Erro ao atualizar requisição: $e\nStackTrace: $st');
+      rethrow;
+    }
+  }
+
+  Future<void> updateRequestStatus({
+    required String requestId,
+    required String status,
+  }) async {
+    debugPrint('[RequestsRemoteDataSource] Atualizando status da requisição: id=$requestId, status=$status');
+    try {
+      await SupabaseService.client
+          .from('requests')
+          .update({'status': status})
+          .eq('id', requestId)
+          .select('id')
+          .single();
+      debugPrint('[RequestsRemoteDataSource] Status da requisição atualizado com sucesso');
+    } catch (e, st) {
+      debugPrint('[RequestsRemoteDataSource] Erro ao atualizar status da requisição: $e\nStackTrace: $st');
+      rethrow;
+    }
   }
 
   Future<void> deleteCurrentUserRequest({
     required String requestId,
   }) async {
+    debugPrint('[RequestsRemoteDataSource] Deletando requisição: id=$requestId');
     final userId = SupabaseService.client.auth.currentUser?.id;
     if (userId == null) {
+      debugPrint('[RequestsRemoteDataSource] Usuário não autenticado para deletar');
       throw StateError('No authenticated user found to delete request');
     }
 
-    await SupabaseService.client
-        .from('requests')
-        .delete()
-        .eq('id', requestId)
-        .eq('requester_id', userId)
-        .select('id')
-        .single();
+    try {
+      await SupabaseService.client
+          .from('requests')
+          .delete()
+          .eq('id', requestId)
+          .eq('requester_id', userId)
+          .select('id')
+          .single();
+      debugPrint('[RequestsRemoteDataSource] Requisição deletada com sucesso');
+    } catch (e, st) {
+      debugPrint('[RequestsRemoteDataSource] Erro ao deletar requisição: $e\nStackTrace: $st');
+      rethrow;
+    }
   }
 
   RequestEntity _mapRowToEntity(Map<String, dynamic> row) {
+    debugPrint('[RequestsRemoteDataSource] Mapeando requisição: id=${row['id']}, título=${row['title']}');
     final id = row['id'].toString();
     final title = row['title'].toString();
     final status = row['status'].toString();
@@ -104,10 +164,11 @@ class RequestsRemoteDataSource {
     final longitude = _lonFromGeo(locationGeoJson);
 
     if (latitude == null || longitude == null) {
+      debugPrint('[RequestsRemoteDataSource] GeoJSON inválido para requisição $id');
       throw StateError('Invalid location_geojson for request $id');
     }
 
-    return RequestEntity(
+    final entity = RequestEntity(
       id: id,
       title: title,
       status: status,
@@ -118,6 +179,8 @@ class RequestsRemoteDataSource {
       createdAt: createdAt,
       location: LatLng(latitude, longitude),
     );
+    debugPrint('[Requisição mapeada: ID=$id, título=$title, location=($latitude, $longitude)');
+    return entity;
   }
 
   bool? _boolFromDynamic(dynamic value) {
@@ -169,8 +232,12 @@ class RequestsRemoteDataSource {
     if (latValue is! num) {
       return null;
     }
+    final lat = latValue.toDouble();
+    if (!lat.isFinite || lat < -90 || lat > 90) {
+      return null;
+    }
 
-    return latValue.toDouble();
+    return lat;
   }
 
   double? _lonFromGeo(Map<String, dynamic>? geo) {
@@ -187,7 +254,11 @@ class RequestsRemoteDataSource {
     if (lonValue is! num) {
       return null;
     }
+    final lon = lonValue.toDouble();
+    if (!lon.isFinite || lon < -180 || lon > 180) {
+      return null;
+    }
 
-    return lonValue.toDouble();
+    return lon;
   }
 }

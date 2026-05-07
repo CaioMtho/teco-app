@@ -7,6 +7,7 @@ import '../../domain/usecases/create_request_usecase.dart';
 import '../../domain/usecases/delete_current_user_request_usecase.dart';
 import '../../domain/usecases/get_current_user_open_requests_usecase.dart';
 import '../../domain/usecases/get_nearby_open_requests_usecase.dart';
+import '../../domain/usecases/update_request_status_usecase.dart';
 import '../../domain/usecases/update_current_user_request_usecase.dart';
 
 final requestsRemoteDataSourceProvider = Provider<RequestsRemoteDataSource>((ref) {
@@ -34,6 +35,11 @@ final getCurrentUserOpenRequestsUseCaseProvider =
 final updateCurrentUserRequestUseCaseProvider =
     Provider<UpdateCurrentUserRequestUseCase>((ref) {
   return UpdateCurrentUserRequestUseCase(ref.read(requestsRepositoryProvider));
+});
+
+final updateRequestStatusUseCaseProvider =
+    Provider<UpdateRequestStatusUseCase>((ref) {
+  return UpdateRequestStatusUseCase(ref.read(requestsRepositoryProvider));
 });
 
 final deleteCurrentUserRequestUseCaseProvider =
