@@ -232,8 +232,12 @@ class RequestsRemoteDataSource {
     if (latValue is! num) {
       return null;
     }
+    final lat = latValue.toDouble();
+    if (!lat.isFinite || lat < -90 || lat > 90) {
+      return null;
+    }
 
-    return latValue.toDouble();
+    return lat;
   }
 
   double? _lonFromGeo(Map<String, dynamic>? geo) {
@@ -250,7 +254,11 @@ class RequestsRemoteDataSource {
     if (lonValue is! num) {
       return null;
     }
+    final lon = lonValue.toDouble();
+    if (!lon.isFinite || lon < -180 || lon > 180) {
+      return null;
+    }
 
-    return lonValue.toDouble();
+    return lon;
   }
 }

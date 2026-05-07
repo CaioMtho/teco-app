@@ -174,6 +174,51 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
     }
   }
 
+  Future<void> _showRatingDialog() async {
+    int rating = 0;
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(builder: (context, setState) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF222431),
+            title: const Text('Avalie este pedido', style: TextStyle(color: Colors.white)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Avaliação opcional de 5 estrelas', style: TextStyle(color: Colors.white70)),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(5, (i) {
+                    final idx = i + 1;
+                    return IconButton(
+                      onPressed: () => setState(() => rating = idx),
+                      icon: Icon(
+                        Icons.star,
+                        color: idx <= rating ? Colors.amber : Colors.white24,
+                      ),
+                    );
+                  }),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Pular'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Enviar'),
+              ),
+            ],
+          );
+        });
+      },
+    );
+  }
+
   Future<void> _showProposalPaymentSheet(
     ProposalEntity proposal, {
     required bool isRequester,
@@ -295,6 +340,24 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
                         messenger.showSnackBar(
                           SnackBar(content: Text('Erro: $e')),
                         );
+                      }
+                    },
+                    onComplete: () async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      final txn = detailState.paymentTransaction.valueOrNull;
+                      if (txn == null) return;
+                      try {
+                        await ref.read(chatDetailNotifierProvider.notifier).completeRequest(
+                          requestId: widget.requestId,
+                          transaction: txn,
+                        );
+                        if (!mounted) return;
+                        await _showRatingDialog();
+                        if (!mounted) return;
+                        messenger.showSnackBar(const SnackBar(content: Text('Tarefa marcada como concluída')));
+                      } catch (e) {
+                        if (!mounted) return;
+                        messenger.showSnackBar(SnackBar(content: Text('Erro ao concluir tarefa: $e')));
                       }
                     },
                   );
@@ -463,6 +526,7 @@ class _StickyProposalHeader extends StatelessWidget {
     required this.onAccept,
     required this.onCancel,
     required this.onDecline,
+    this.onComplete,
   });
 
   final ProposalEntity proposal;
@@ -471,6 +535,7 @@ class _StickyProposalHeader extends StatelessWidget {
   final VoidCallback onAccept;
   final VoidCallback onCancel;
   final VoidCallback onDecline;
+  final VoidCallback? onComplete;
 
   @override
   Widget build(BuildContext context) {
@@ -587,18 +652,31 @@ class _StickyProposalHeader extends StatelessWidget {
             ],
           ] else if (!isReleased) ...[
             const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: null,
-                style: FilledButton.styleFrom(
-                  backgroundColor: isEscrow ? const Color(0xFF22C55E) : const Color(0xFF9A7BFF),
-                ),
-                child: Text(
-                  isEscrow ? 'Aguardando conclusão' : 'Aguardando pagamento',
+            if (isEscrow && isRequester) ...[
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: onComplete,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF22C55E),
+                  ),
+                  child: const Text('Marcar como concluída'),
                 ),
               ),
-            ),
+            ] else ...[
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: null,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: isEscrow ? const Color(0xFF22C55E) : const Color(0xFF9A7BFF),
+                  ),
+                  child: Text(
+                    isEscrow ? 'Aguardando conclusão' : 'Aguardando pagamento',
+                  ),
+                ),
+              ),
+            ],
           ],
         ],
       ),
@@ -662,6 +740,8 @@ class _ProposalPaymentSheetState extends ConsumerState<_ProposalPaymentSheet> {
         transaction: transaction,
       );
       if (!mounted) return;
+      await _showRatingDialog();
+      if (!mounted) return;
       Navigator.of(context).pop();
       messenger.showSnackBar(const SnackBar(content: Text('Tarefa marcada como concluída')));
     } catch (e) {
@@ -672,6 +752,51 @@ class _ProposalPaymentSheetState extends ConsumerState<_ProposalPaymentSheet> {
         setState(() => _isBusy = false);
       }
     }
+  }
+
+  Future<void> _showRatingDialog() async {
+    int rating = 0;
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(builder: (context, setState) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF222431),
+            title: const Text('Avalie este pedido', style: TextStyle(color: Colors.white)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Avaliação opcional de 5 estrelas', style: TextStyle(color: Colors.white70)),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(5, (i) {
+                    final idx = i + 1;
+                    return IconButton(
+                      onPressed: () => setState(() => rating = idx),
+                      icon: Icon(
+                        Icons.star,
+                        color: idx <= rating ? Colors.amber : Colors.white24,
+                      ),
+                    );
+                  }),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Pular'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Enviar'),
+              ),
+            ],
+          );
+        });
+      },
+    );
   }
 
   Future<void> _cancelUnpaid() async {
@@ -698,6 +823,9 @@ class _ProposalPaymentSheetState extends ConsumerState<_ProposalPaymentSheet> {
   @override
   Widget build(BuildContext context) {
     final transaction = ref.watch(chatDetailNotifierProvider).paymentTransaction.valueOrNull;
+    final isReleased = transaction?.isReleased ?? false;
+    final isEscrow = (transaction?.isEscrow ?? false) && !isReleased;
+    final isPending = (transaction?.isPending ?? false) && !isReleased && !isEscrow;
 
     return SafeArea(
       child: Padding(
@@ -740,17 +868,47 @@ class _ProposalPaymentSheetState extends ConsumerState<_ProposalPaymentSheet> {
             Text(
               transaction == null
                   ? 'Preparando transação de pagamento.'
-                  : transaction.isEscrow
-                      ? 'Pagamento confirmado e request em andamento.'
-                      : transaction.isReleased
-                          ? 'Pagamento liberado.'
+                  : isReleased
+                      ? 'Pagamento liberado.'
+                      : isEscrow
+                          ? 'Pagamento confirmado e request em andamento.'
                           : 'Pagamento aguardando confirmação.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white70),
             ),
+            const SizedBox(height: 8),
+            if (transaction != null) ...[
+              if (isReleased) ...[
+                Row(
+                  children: [
+                    const Icon(Icons.check_circle, color: Color(0xFF22C55E)),
+                    const SizedBox(width: 8),
+                    Text('Tarefa concluída', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Color(0xFF22C55E))),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ] else if (isEscrow && !widget.isRequester) ...[
+                Row(
+                  children: [
+                    const Icon(Icons.hourglass_top, color: Colors.white54),
+                    const SizedBox(width: 8),
+                    Text('Aguardando conclusão pelo requester', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white70)),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
+            ],
             const SizedBox(height: 20),
             if (transaction == null) ...[
               const Center(child: CircularProgressIndicator()),
-            ] else if (transaction.isEscrow && widget.isRequester) ...[
+            ] else if (isReleased) ...[
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: null,
+                  child: const Text('Tarefa concluída'),
+                ),
+              ),
+            ] else if (isEscrow && widget.isRequester) ...[
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
@@ -758,7 +916,7 @@ class _ProposalPaymentSheetState extends ConsumerState<_ProposalPaymentSheet> {
                   child: const Text('Marcar como concluída'),
                 ),
               ),
-            ] else if (transaction.isPending) ...[
+            ] else if (isPending) ...[
               if (widget.isRequester) ...[
                 SizedBox(
                   width: double.infinity,

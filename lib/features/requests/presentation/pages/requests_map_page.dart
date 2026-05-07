@@ -458,17 +458,21 @@ Future<void> _onCreateRequest() async {
 
   Future<LatLng> _resolveMainLocation() async {
     final deviceLocation = await _resolveDeviceLocation();
-    if (deviceLocation != null) {
+    if (deviceLocation != null && _isFiniteLatLng(deviceLocation)) {
       return deviceLocation;
     }
 
     final profileLocation =
         ref.read(authControllerProvider).valueOrNull?.profile?.location;
-    if (profileLocation != null) {
+    if (profileLocation != null && _isFiniteLatLng(profileLocation)) {
       return profileLocation;
     }
 
     return _defaultMapCenter;
+  }
+
+  bool _isFiniteLatLng(LatLng point) {
+    return point.latitude.isFinite && point.longitude.isFinite;
   }
 
   Future<LatLng?> _resolveDeviceLocation() async {
@@ -683,6 +687,7 @@ Future<void> _onCreateRequest() async {
 
   List<Marker> _buildRequestMarkers(ColorScheme colorScheme) {
     return _openRequests
+        .where((request) => _isFiniteLatLng(request.location))
         .map(
           (request) => Marker(
             point: request.location,
