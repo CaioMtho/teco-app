@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:teco_app/features/settings/presentation/pages/settings_page.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
@@ -824,10 +825,18 @@ class _BottomBar extends StatelessWidget {
                 onTap: onRequestsTap,
               ),
             ),
-            const Expanded(
+            Expanded(
               child: _BottomIcon(
                 icon: Icons.settings_outlined,
                 label: 'configuração',
+                onTap: () {
+                  Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => SettingsPage(),
+                ),
+              );
+              },
               ),
             ),
           ],
