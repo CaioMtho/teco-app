@@ -1,5 +1,5 @@
 class AppConstants {
   AppConstants._();
 
-  static const double openRequestsRadiusKm = 25;
+  static const double openRequestsRadiusKm = 15;
 }

@@ -28,7 +28,7 @@ O projeto TECO é construído com uma arquitetura moderna e escalável:
 
 ## 🤝 Contribuição
 
-Siga o [Guia de Contribuição](CONTRIBUTING.md) para informações de contribuição.
+Siga o [Guia de Contribuição](CONTRIBUTING.md) e o [Guia de Arquitetura](docs/architecture-guide.md) para informações de contribuição e estrutura do projeto.
 
 ## 📄 Licença
 

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -86,7 +86,7 @@ class _AuthScreenState extends State<AuthScreen>
                       color: _kAccent,
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.bolt, color: _kPrimary, size: 24),
+                    child: const ImageIcon(AssetImage('assets/icon/app_icon.png'), color: _kPrimary, size: 24),
                   ),
                   const SizedBox(height: 32),
                   Text(
@@ -344,10 +344,11 @@ class _RegisterFormState extends ConsumerState<_RegisterForm> {
         return;
       }
       final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        locationSettings:
+            const LocationSettings(accuracy: LocationAccuracy.high),
       );
 
-      // Reverse geocoding para mostrar endereço legível
+      final currentLocation = LatLng(pos.latitude, pos.longitude);
       final placemarks = await placemarkFromCoordinates(
         pos.latitude,
         pos.longitude,
@@ -358,7 +359,7 @@ class _RegisterFormState extends ConsumerState<_RegisterForm> {
           : '${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}';
 
       setState(() {
-        _location = LatLng(pos.latitude, pos.longitude);
+        _location = currentLocation;
         _resolvedAddress = address;
       });
     } catch (_) {
@@ -389,20 +390,21 @@ class _RegisterFormState extends ConsumerState<_RegisterForm> {
         _showError('Nenhum resultado encontrado para esse endereço.');
         return;
       }
-      // Busca placemark para cada resultado (máx. 3)
+
       final limited = locations.take(3).toList();
       final placemarks = await Future.wait(
-        limited.map((loc) => placemarkFromCoordinates(
-              loc.latitude,
-              loc.longitude,
-            ).then((list) => list.isNotEmpty ? list.first : Placemark())),
+        limited.map(
+          (loc) => placemarkFromCoordinates(
+            loc.latitude,
+            loc.longitude,
+          ).then((list) => list.isNotEmpty ? list.first : Placemark()),
+        ),
       );
+
       setState(() {
         _geocodingResults = limited;
         _placemarks = placemarks;
       });
-    } on NoResultFoundException {
-      _showError('Nenhum resultado encontrado para esse endereço.');
     } catch (_) {
       _showError('Erro ao buscar endereço. Tente novamente.');
     } finally {
@@ -411,11 +413,11 @@ class _RegisterFormState extends ConsumerState<_RegisterForm> {
   }
 
   void _selectGeocodingResult(int index) {
-    final loc = _geocodingResults[index];
-    final pm = _placemarks[index];
+    final selected = _geocodingResults[index];
+    final placemark = _placemarks[index];
     setState(() {
-      _location = LatLng(loc.latitude, loc.longitude);
-      _resolvedAddress = _formatPlacemark(pm);
+      _location = LatLng(selected.latitude, selected.longitude);
+      _resolvedAddress = _formatPlacemark(placemark);
       _geocodingResults = [];
       _placemarks = [];
     });
@@ -635,7 +637,6 @@ class _RegisterFormState extends ConsumerState<_RegisterForm> {
                       _location = null;
                       _resolvedAddress = null;
                       _geocodingResults = [];
-                      _placemarks = [];
                     }),
                   ),
                   _LocationModeTab(
@@ -711,7 +712,8 @@ class _RegisterFormState extends ConsumerState<_RegisterForm> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: _kAccent,
                         foregroundColor: _kPrimary,
-                        disabledBackgroundColor: _kAccent.withOpacity(0.4),
+                        disabledBackgroundColor:
+                            _kAccent.withValues(alpha: 0.4),
                         elevation: 0,
                         padding: EdgeInsets.zero,
                         shape: RoundedRectangleBorder(
@@ -1111,7 +1113,7 @@ class _PrimaryButton extends StatelessWidget {
         style: ElevatedButton.styleFrom(
           backgroundColor: _kAccent,
           foregroundColor: _kPrimary,
-          disabledBackgroundColor: _kAccent.withOpacity(0.5),
+          disabledBackgroundColor: _kAccent.withValues(alpha: 0.5),
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
