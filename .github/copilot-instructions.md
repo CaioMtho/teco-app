@@ -5,7 +5,7 @@
 - Organize features strictly under `lib/features/<feature>/` with three internal layers: `data/`, `domain/`, and `presentation/`.
 - **Domain Layer**: Contains Entities, Repository Contracts, and Use Cases. Must contain pure business rules. Must NOT depend on Flutter or external infrastructure libraries.
 - **Data Layer**: Contains Datasources and Repository Implementations. Datasources handle raw data fetching and serialization (JSON ↔ object). Repositories implement domain contracts and map Data Models to Domain Entities.
-- **Presentation Layer**: Contains pages, widgets, and state management. Renders UI and consumes Use Cases. Must NOT access datasources directly, implement business logic, or manually instantiate repositories.
+- **Presentation Layer**: Contains pages, widgets, and state management. Renders UI and consumes Use Cases. Must NOT access datasources directly, implement business logic, or directly instantiate concrete repository implementations. Dependencies must be resolved through DI/providers.
 - **Core (core)**: Reserved for globally shared constants, services, generic utilities, and neutral widgets. Must NOT contain any feature-specific logic.
 - **Dependency Direction Rules**:
   - Allowed: `presentation → domain`, `data → domain`, `presentation → core`, `data → core`.
@@ -14,8 +14,10 @@
 ## 2. Coding Standards
 - **File Organization**: main.dart is exclusively for application bootstrap. app.dart is for app composition, themes, routing, and main UI structure.
 - **State Management & DI**: Resolve dependencies outside the UI (via providers or DI containers). UI must consume injected abstractions only.
-- **Navigation**: Follow a Single Page Application (SPA) model. Use a centralized routing control and a consistent main shell. Treat authentication as an entry gate. Avoid scattered navigation logic and excessive manual stack manipulation (e.g., `popUntil`).
+- **Navigation**: Use a centralized declarative navigation architecture
+with a persistent application shell when appropriate. Use a centralized routing control and a consistent main shell. Treat authentication as an entry gate. Avoid scattered navigation logic and excessive manual stack manipulation (e.g., `popUntil`).
 - **Forbidden Patterns**: Do not instantiate repositories inside widgets. Do not place business logic in the UI. Do not couple features directly.
+- **Granular use cases**: Prefer one use case per business action or user intent.
 
 ## 3. Backend/API Contract Rules
 - **Backend Stack**: Use Supabase for the backend infrastructure, including PostgreSQL, Supabase Auth, Storage, Realtime (for chat), and Edge Functions (Deno).
