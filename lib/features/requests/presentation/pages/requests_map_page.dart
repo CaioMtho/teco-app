@@ -642,15 +642,32 @@ Future<void> _onCreateRequest() async {
           ? null
           : Padding(
               padding: EdgeInsets.only(bottom: fabBottomPadding),
-              child: Tooltip(
-                message: 'Voltar para sua localização',
-                child: FloatingActionButton.small(
-                  hoverElevation: 10,
-                  onPressed: () {
-                    _mapController.move(_mainLocation, 13.5);
-                  },
-                  child: const Icon(Icons.my_location_rounded),
-                ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Tooltip(
+                    message: 'Atualizar mapa',
+                    child: FloatingActionButton.small(
+                      heroTag: 'requests-map-refresh',
+                      hoverElevation: 10,
+                      onPressed: _isLoading ? null : _loadMapData,
+                      child: const Icon(Icons.refresh_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Tooltip(
+                    message: 'Voltar para sua localização',
+                    child: FloatingActionButton.small(
+                      heroTag: 'requests-map-location',
+                      hoverElevation: 10,
+                      onPressed: () {
+                        _mapController.move(_mainLocation, 13.5);
+                      },
+                      child: const Icon(Icons.my_location_rounded),
+                    ),
+                  ),
+                ],
               ),
             ),
     );
