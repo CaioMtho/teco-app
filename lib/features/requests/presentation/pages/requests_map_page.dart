@@ -20,20 +20,21 @@ class RequestsMapPage extends ConsumerStatefulWidget {
   ConsumerState<RequestsMapPage> createState() => _RequestsMapPageState();
 }
 
-
-
 class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
   static const LatLng _defaultMapCenter = LatLng(-23.55052, -46.633308);
 
   final MapController _mapController = MapController();
 
-  LatLng _mainLocation = const LatLng(0, 0);
+  LatLng _mainLocation = _defaultMapCenter;
   List<RequestEntity> _openRequests = const [];
   List<RequestEntity> _currentUserOpenRequests = const [];
   RequestEntity? _selectedRequest;
   bool _isMyRequestsPanelOpen = false;
   bool _isLoading = true;
   bool _isLoadingMyRequests = false;
+  bool _isMapReady = false;
+  bool _hasCenteredMap = false;
+  bool _hasResolvedMainLocation = false;
   String? _errorMessage;
 
   @override
@@ -73,7 +74,9 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
     if (_selectedRequest == null) return;
 
     final request = _selectedRequest!;
-    debugPrint('[RequestsMapPage] Abrindo modal para criar chat para request: ${request.id}');
+    debugPrint(
+      '[RequestsMapPage] Abrindo modal para criar chat para request: ${request.id}',
+    );
 
     final authState = ref.read(authControllerProvider).valueOrNull;
     final profile = authState?.profile;
@@ -92,7 +95,9 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Somente prestadores de serviço podem iniciar chats com clientes'),
+          content: Text(
+            'Somente prestadores de serviço podem iniciar chats com clientes',
+          ),
           duration: Duration(seconds: 3),
         ),
       );
@@ -125,21 +130,23 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
 
     debugPrint('[RequestsMapPage] Criando chat com mensagem inicial');
     try {
-      await ref.read(createChatWithMessageUseCaseProvider).call(
-        requestId: request.id,
-        requestTitle: request.title,
-        requesterId: requesterId,
-        providerId: currentUserId,
-        participantId: requesterId,
-        participantName: '', // será preenchido pelo backend
-        messageContent: messageContent,
-      );
+      await ref
+          .read(createChatWithMessageUseCaseProvider)
+          .call(
+            requestId: request.id,
+            requestTitle: request.title,
+            requesterId: requesterId,
+            providerId: currentUserId,
+            participantId: requesterId,
+            participantName: '', // será preenchido pelo backend
+            messageContent: messageContent,
+          );
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Chat criado com sucesso!')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Chat criado com sucesso!')));
 
       // Fechar modal de request
       setState(() {
@@ -166,11 +173,15 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
     }
 
     try {
-      debugPrint('[RequestsMapPage] Chamando use case getCurrentUserOpenRequests');
+      debugPrint(
+        '[RequestsMapPage] Chamando use case getCurrentUserOpenRequests',
+      );
       final requests = await ref
           .read(getCurrentUserOpenRequestsUseCaseProvider)
           .call();
-      debugPrint('[RequestsMapPage] ${requests.length} requisiç\u00f5es do usuário carregadas');
+      debugPrint(
+        '[RequestsMapPage] ${requests.length} requisiç\u00f5es do usuário carregadas',
+      );
 
       if (!mounted) {
         return;
@@ -180,7 +191,9 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
         _currentUserOpenRequests = requests;
       });
     } catch (e) {
-      debugPrint('[RequestsMapPage] Erro ao carregar requisiç\u00f5es do usuário: $e');
+      debugPrint(
+        '[RequestsMapPage] Erro ao carregar requisiç\u00f5es do usuário: $e',
+      );
       if (!mounted) {
         return;
       }
@@ -199,54 +212,58 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
     }
   }
 
-// Novo método _onCreateRequest:
-Future<void> _onCreateRequest() async {
-  debugPrint('[RequestsMapPage] Abrindo dialog de criar requisiç\u00e3o');
-  final payload = await showModalBottomSheet<_RequestCreatePayload>(
-    context: context,
-    backgroundColor: const Color(0xFF222431),
-    isScrollControlled: true,
-    showDragHandle: true,
-    builder: (context) => _CreateRequestSheet(
-      initialLat: _mainLocation.latitude,
-      initialLon: _mainLocation.longitude,
-    ),
-  );
-
-  if (payload == null) {
-    debugPrint('[RequestsMapPage] Criação de requisiç\u00e3o cancelada');
-    return;
-  }
-
-  debugPrint('[RequestsMapPage] Criando requisiç\u00e3o: ${payload.title}');
-  try {
-    await ref.read(createRequestUseCaseProvider).call(
-      title: payload.title,
-      description: payload.description,
-      budgetRange: payload.budgetRange,
-      isRemote: payload.isRemote,
-      lat: payload.lat,
-      lon: payload.lon,
+  // Novo método _onCreateRequest:
+  Future<void> _onCreateRequest() async {
+    debugPrint('[RequestsMapPage] Abrindo dialog de criar requisiç\u00e3o');
+    final payload = await showModalBottomSheet<_RequestCreatePayload>(
+      context: context,
+      backgroundColor: const Color(0xFF222431),
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => _CreateRequestSheet(
+        initialLat: _mainLocation.latitude,
+        initialLon: _mainLocation.longitude,
+      ),
     );
-    debugPrint('[RequestsMapPage] Requisiç\u00e3o criada com sucesso');
 
-    await _loadMapData();
+    if (payload == null) {
+      debugPrint('[RequestsMapPage] Criação de requisiç\u00e3o cancelada');
+      return;
+    }
 
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Requisição criada com sucesso.')),
-    );
-  } catch (e) {
-    debugPrint('[RequestsMapPage] Erro ao criar requisiç\u00e3o: $e');
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Não foi possível criar a requisição.')),
+    debugPrint('[RequestsMapPage] Criando requisiç\u00e3o: ${payload.title}');
+    try {
+      await ref
+          .read(createRequestUseCaseProvider)
+          .call(
+            title: payload.title,
+            description: payload.description,
+            budgetRange: payload.budgetRange,
+            isRemote: payload.isRemote,
+            lat: payload.lat,
+            lon: payload.lon,
+          );
+      debugPrint('[RequestsMapPage] Requisiç\u00e3o criada com sucesso');
+
+      await _loadMapData();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Requisição criada com sucesso.')),
+      );
+    } catch (e) {
+      debugPrint('[RequestsMapPage] Erro ao criar requisiç\u00e3o: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não foi possível criar a requisição.')),
       );
     }
   }
 
   Future<void> _onEditRequest(RequestEntity request) async {
-    debugPrint('[RequestsMapPage] Abrindo dialog de editar requisiç\u00e3o: ${request.title}');
+    debugPrint(
+      '[RequestsMapPage] Abrindo dialog de editar requisiç\u00e3o: ${request.title}',
+    );
     final payload = await showModalBottomSheet<_RequestEditPayload>(
       context: context,
       backgroundColor: const Color(0xFF222431),
@@ -260,15 +277,19 @@ Future<void> _onCreateRequest() async {
       return;
     }
 
-    debugPrint('[RequestsMapPage] Atualizando requisiç\u00e3o: ${payload.title}');
+    debugPrint(
+      '[RequestsMapPage] Atualizando requisiç\u00e3o: ${payload.title}',
+    );
     try {
-      await ref.read(updateCurrentUserRequestUseCaseProvider).call(
-        requestId: request.id,
-        title: payload.title,
-        description: payload.description,
-        budgetRange: payload.budgetRange,
-        isRemote: payload.isRemote,
-      );
+      await ref
+          .read(updateCurrentUserRequestUseCaseProvider)
+          .call(
+            requestId: request.id,
+            title: payload.title,
+            description: payload.description,
+            budgetRange: payload.budgetRange,
+            isRemote: payload.isRemote,
+          );
       debugPrint('[RequestsMapPage] Requisiç\u00e3o atualizada com sucesso');
 
       await _loadMapData();
@@ -295,7 +316,9 @@ Future<void> _onCreateRequest() async {
   }
 
   Future<void> _onDeleteRequest(RequestEntity request) async {
-    debugPrint('[RequestsMapPage] Solicitando confirmação para deletar: ${request.title}');
+    debugPrint(
+      '[RequestsMapPage] Solicitando confirmação para deletar: ${request.title}',
+    );
     final shouldDelete = await showDialog<bool>(
       context: context,
       builder: (context) {
@@ -329,9 +352,9 @@ Future<void> _onCreateRequest() async {
 
     debugPrint('[RequestsMapPage] Deletando requisiç\u00e3o: ${request.title}');
     try {
-      await ref.read(deleteCurrentUserRequestUseCaseProvider).call(
-        requestId: request.id,
-      );
+      await ref
+          .read(deleteCurrentUserRequestUseCaseProvider)
+          .call(requestId: request.id);
       debugPrint('[RequestsMapPage] Requisiç\u00e3o deletada com sucesso');
       await _loadMapData();
 
@@ -382,19 +405,29 @@ Future<void> _onCreateRequest() async {
 
     try {
       final mainLocation = await _resolveMainLocation();
-      debugPrint('[RequestsMapPage] Localização principal obtida: (${mainLocation.latitude},${mainLocation.longitude})');
+      debugPrint(
+        '[RequestsMapPage] Localização principal obtida: (${mainLocation.latitude},${mainLocation.longitude})',
+      );
       String? nonBlockingErrorMessage;
 
       List<RequestEntity> openRequests = const [];
       try {
-        debugPrint('[RequestsMapPage] Buscando requisiç\u00f5es pr\u00f3ximas com raio de ${AppConstants.openRequestsRadiusKm}km');
-        openRequests = await ref.read(getNearbyOpenRequestsUseCaseProvider).call(
-          center: mainLocation,
-          radiusKm: AppConstants.openRequestsRadiusKm,
+        debugPrint(
+          '[RequestsMapPage] Buscando requisiç\u00f5es pr\u00f3ximas com raio de ${AppConstants.openRequestsRadiusKm}km',
         );
-        debugPrint('[RequestsMapPage] ${openRequests.length} requisiç\u00f5es pr\u00f3ximas carregadas');
+        openRequests = await ref
+            .read(getNearbyOpenRequestsUseCaseProvider)
+            .call(
+              center: mainLocation,
+              radiusKm: AppConstants.openRequestsRadiusKm,
+            );
+        debugPrint(
+          '[RequestsMapPage] ${openRequests.length} requisiç\u00f5es pr\u00f3ximas carregadas',
+        );
       } catch (e) {
-        debugPrint('[RequestsMapPage] Erro ao carregar requisiç\u00f5es pr\u00f3ximas: $e');
+        debugPrint(
+          '[RequestsMapPage] Erro ao carregar requisiç\u00f5es pr\u00f3ximas: $e',
+        );
         nonBlockingErrorMessage =
             'Nao foi possível carregar requisições próximas no momento.';
       }
@@ -405,9 +438,13 @@ Future<void> _onCreateRequest() async {
         currentUserOpenRequests = await ref
             .read(getCurrentUserOpenRequestsUseCaseProvider)
             .call();
-        debugPrint('[RequestsMapPage] ${currentUserOpenRequests.length} requisiç\u00f5es do usuário carregadas');
+        debugPrint(
+          '[RequestsMapPage] ${currentUserOpenRequests.length} requisiç\u00f5es do usuário carregadas',
+        );
       } catch (e) {
-        debugPrint('[RequestsMapPage] Erro ao carregar requisiç\u00f5es do usuário: $e');
+        debugPrint(
+          '[RequestsMapPage] Erro ao carregar requisiç\u00f5es do usuário: $e',
+        );
         currentUserOpenRequests = const [];
       }
 
@@ -429,14 +466,17 @@ Future<void> _onCreateRequest() async {
 
       setState(() {
         _mainLocation = mainLocation;
+        _hasResolvedMainLocation = true;
         _openRequests = openRequests;
         _currentUserOpenRequests = currentUserOpenRequests;
         _selectedRequest = refreshedSelectedRequest;
         _errorMessage = nonBlockingErrorMessage;
       });
 
-      debugPrint('[RequestsMapPage] Dados do mapa atualizados. Total: ${openRequests.length} abertas, ${currentUserOpenRequests.length} minhas');
-      _mapController.move(_mainLocation, 12.5);
+      debugPrint(
+        '[RequestsMapPage] Dados do mapa atualizados. Total: ${openRequests.length} abertas, ${currentUserOpenRequests.length} minhas',
+      );
+      _focusMapOnMainLocationIfNeeded();
     } catch (e) {
       debugPrint('[RequestsMapPage] Erro ao carregar dados do mapa: $e');
       if (!mounted) {
@@ -462,8 +502,11 @@ Future<void> _onCreateRequest() async {
       return deviceLocation;
     }
 
-    final profileLocation =
-        ref.read(authControllerProvider).valueOrNull?.profile?.location;
+    final profileLocation = ref
+        .read(authControllerProvider)
+        .valueOrNull
+        ?.profile
+        ?.location;
     if (profileLocation != null && _isFiniteLatLng(profileLocation)) {
       return profileLocation;
     }
@@ -473,6 +516,27 @@ Future<void> _onCreateRequest() async {
 
   bool _isFiniteLatLng(LatLng point) {
     return point.latitude.isFinite && point.longitude.isFinite;
+  }
+
+  LatLng _mapCenter() {
+    return _isFiniteLatLng(_mainLocation) ? _mainLocation : _defaultMapCenter;
+  }
+
+  void _focusMapOnMainLocationIfNeeded() {
+    if (!_isMapReady ||
+        _hasCenteredMap ||
+        !_hasResolvedMainLocation ||
+        !mounted) {
+      return;
+    }
+
+    final mapCenter = _mapCenter();
+    if (!_isFiniteLatLng(mapCenter)) {
+      return;
+    }
+
+    _mapController.move(mapCenter, 12.5);
+    _hasCenteredMap = true;
   }
 
   Future<LatLng?> _resolveDeviceLocation() async {
@@ -511,8 +575,9 @@ Future<void> _onCreateRequest() async {
     final profileType = authState?.profile?.type ?? '';
     final isProvider = profileType == 'provider';
     final profileName = (authState?.profile?.fullName ?? '').trim();
-    final avatarInitial =
-        profileName.isNotEmpty ? profileName.substring(0, 1).toUpperCase() : 'U';
+    final avatarInitial = profileName.isNotEmpty
+        ? profileName.substring(0, 1).toUpperCase()
+        : 'U';
 
     final colorScheme = Theme.of(context).colorScheme;
     final errorBottomPadding = _isMyRequestsPanelOpen
@@ -528,10 +593,14 @@ Future<void> _onCreateRequest() async {
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
-              initialCenter: _mainLocation,
+              initialCenter: _mapCenter(),
               initialZoom: 12,
               minZoom: 5,
               maxZoom: 18,
+              onMapReady: () {
+                _isMapReady = true;
+                _focusMapOnMainLocationIfNeeded();
+              },
             ),
             children: [
               TileLayer(
@@ -541,7 +610,7 @@ Future<void> _onCreateRequest() async {
               CircleLayer(
                 circles: [
                   CircleMarker(
-                    point: _mainLocation,
+                    point: _mapCenter(),
                     radius: AppConstants.openRequestsRadiusKm * 1000,
                     useRadiusInMeter: true,
                     color: colorScheme.primary.withValues(alpha: 0.14),
@@ -662,7 +731,10 @@ Future<void> _onCreateRequest() async {
                       heroTag: 'requests-map-location',
                       hoverElevation: 10,
                       onPressed: () {
-                        _mapController.move(_mainLocation, 13.5);
+                        final mapCenter = _mapCenter();
+                        if (_isFiniteLatLng(mapCenter)) {
+                          _mapController.move(mapCenter, 13.5);
+                        }
                       },
                       child: const Icon(Icons.my_location_rounded),
                     ),
@@ -675,7 +747,7 @@ Future<void> _onCreateRequest() async {
 
   Marker _buildMainMarker(ColorScheme colorScheme) {
     return Marker(
-      point: _mainLocation,
+      point: _mapCenter(),
       width: 52,
       height: 52,
       child: GestureDetector(
@@ -732,10 +804,7 @@ Future<void> _onCreateRequest() async {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({
-    required this.colorScheme,
-    required this.avatarInitial,
-  });
+  const _TopBar({required this.colorScheme, required this.avatarInitial});
 
   final ColorScheme colorScheme;
   final String avatarInitial;
@@ -755,17 +824,21 @@ class _TopBar extends StatelessWidget {
               icon: Icons.chat_bubble_outline_rounded,
               tooltip: 'Chat',
               onTap: () {
-                Navigator.of(context).push(PageRouteBuilder(
-                  opaque: false,
-                  pageBuilder: (context, animation, secondaryAnimation) => const ChatListPanel(),
-                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                    final slide = Tween<Offset>(begin: const Offset(-1, 0), end: Offset.zero).animate(animation);
-                    return SlideTransition(
-                      position: slide,
-                      child: child,
-                    );
-                  },
-                ));
+                Navigator.of(context).push(
+                  PageRouteBuilder(
+                    opaque: false,
+                    pageBuilder: (context, animation, secondaryAnimation) =>
+                        const ChatListPanel(),
+                    transitionsBuilder:
+                        (context, animation, secondaryAnimation, child) {
+                          final slide = Tween<Offset>(
+                            begin: const Offset(-1, 0),
+                            end: Offset.zero,
+                          ).animate(animation);
+                          return SlideTransition(position: slide, child: child);
+                        },
+                  ),
+                );
               },
               color: colorScheme.onPrimary,
             ),
@@ -1085,7 +1158,7 @@ class _MyRequestsModal extends StatelessWidget {
                       icon: const Icon(Icons.add_circle_outline_rounded),
                       color: Colors.white,
                       hoverColor: Colors.white10,
-                      ),
+                    ),
                   ),
                   Tooltip(
                     message: 'Atualizar lista',
@@ -1427,9 +1500,7 @@ class _EditRequestSheetState extends State<_EditRequestSheet> {
           children: [
             Text(
               'Editar requisição',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
                 color: Colors.white,
               ),
@@ -1549,9 +1620,12 @@ class _CreateRequestSheetState extends State<_CreateRequestSheet> {
     final title = _titleController.text.trim();
     final description = _descriptionController.text.trim();
     final budgetText = _budgetController.text.trim().replaceAll(',', '.');
-    final budgetRange = budgetText.isNotEmpty ? double.tryParse(budgetText) : null;
-    final titleError =
-        title.isEmpty ? 'Informe um título para a requisição.' : null;
+    final budgetRange = budgetText.isNotEmpty
+        ? double.tryParse(budgetText)
+        : null;
+    final titleError = title.isEmpty
+        ? 'Informe um título para a requisição.'
+        : null;
     final budgetError = budgetText.isNotEmpty && budgetRange == null
         ? 'Informe um valor numérico válido.'
         : null;
@@ -1633,13 +1707,10 @@ class _CreateRequestSheetState extends State<_CreateRequestSheet> {
           children: [
             Text(
               'Nova requisição',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -1654,10 +1725,7 @@ class _CreateRequestSheetState extends State<_CreateRequestSheet> {
                   });
                 }
               },
-              decoration: decoration(
-                label: 'Título *',
-                errorText: _titleError,
-              ),
+              decoration: decoration(label: 'Título *', errorText: _titleError),
             ),
             const SizedBox(height: 10),
             TextField(
@@ -1677,7 +1745,9 @@ class _CreateRequestSheetState extends State<_CreateRequestSheet> {
             TextField(
               controller: _budgetController,
               textInputAction: TextInputAction.done,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               style: const TextStyle(color: inputTextColor),
               cursorColor: colorScheme.primary,
               onChanged: (_) {
@@ -1706,16 +1776,19 @@ class _CreateRequestSheetState extends State<_CreateRequestSheet> {
             const SizedBox(height: 4),
             Row(
               children: [
-                const Icon(Icons.location_on_outlined, size: 14, color: Colors.white38),
+                const Icon(
+                  Icons.location_on_outlined,
+                  size: 14,
+                  color: Colors.white38,
+                ),
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(
                     'Localização: ${widget.initialLat.toStringAsFixed(5)}, '
                     '${widget.initialLon.toStringAsFixed(5)}',
-                    style: Theme.of(context)
-                        .textTheme
-                        .labelSmall
-                        ?.copyWith(color: Colors.white54),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.labelSmall?.copyWith(color: Colors.white54),
                   ),
                 ),
               ],
