@@ -277,8 +277,12 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
           ],
         ),
       ),
-      body: SafeArea(
-        child: Column(
+      body: AnimatedPadding(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: SafeArea(
+          child: Column(
           children: [
             // Sticky proposal header
             detailState.proposals.when(
@@ -447,6 +451,7 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
               ),
             ),
           ],
+        ),
         ),
       ),
     );
@@ -701,6 +706,20 @@ class _ProposalPaymentSheet extends ConsumerStatefulWidget {
 
 class _ProposalPaymentSheetState extends ConsumerState<_ProposalPaymentSheet> {
   bool _isBusy = false;
+  bool _isRefreshing = false;
+
+  ProposalEntity _currentProposal(ChatDetailState detailState) {
+    final proposals = detailState.proposals.valueOrNull;
+    if (proposals != null) {
+      for (final proposal in proposals) {
+        if (proposal.id == widget.proposal.id) {
+          return proposal;
+        }
+      }
+    }
+
+    return widget.proposal;
+  }
 
   @override
   void initState() {
@@ -708,6 +727,24 @@ class _ProposalPaymentSheetState extends ConsumerState<_ProposalPaymentSheet> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(chatDetailNotifierProvider.notifier).startPaymentForProposal(widget.proposal);
     });
+  }
+
+  Future<void> _refreshStatus() async {
+    setState(() => _isRefreshing = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(chatDetailNotifierProvider.notifier).refreshProposalPaymentStatus(
+        requestId: widget.requestId,
+        proposalId: widget.proposal.id,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text('Erro ao atualizar status: $e')));
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshing = false);
+      }
+    }
   }
 
   Future<void> _confirmPayment(TransactionEntity transaction) async {
@@ -822,10 +859,14 @@ class _ProposalPaymentSheetState extends ConsumerState<_ProposalPaymentSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final transaction = ref.watch(chatDetailNotifierProvider).paymentTransaction.valueOrNull;
+    final detailState = ref.watch(chatDetailNotifierProvider);
+    final proposal = _currentProposal(detailState);
+    final transaction = detailState.paymentTransaction.valueOrNull;
     final isReleased = transaction?.isReleased ?? false;
     final isEscrow = (transaction?.isEscrow ?? false) && !isReleased;
     final isPending = (transaction?.isPending ?? false) && !isReleased && !isEscrow;
+    final isDeclined = proposal.isDeclined;
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
     return SafeArea(
       child: Padding(
@@ -833,12 +874,17 @@ class _ProposalPaymentSheetState extends ConsumerState<_ProposalPaymentSheet> {
           left: 16,
           right: 16,
           top: 16,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+          bottom: bottomInset + 16,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+        child: SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: MediaQuery.of(context).size.height * 0.35,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
             Row(
               children: [
                 Expanded(
@@ -858,7 +904,7 @@ class _ProposalPaymentSheetState extends ConsumerState<_ProposalPaymentSheet> {
             ),
             const SizedBox(height: 12),
             Text(
-              'R\$ ${widget.proposal.amount.toStringAsFixed(2)}',
+              'R\$ ${proposal.amount.toStringAsFixed(2)}',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                 color: Colors.white,
                 fontWeight: FontWeight.w700,
@@ -866,7 +912,9 @@ class _ProposalPaymentSheetState extends ConsumerState<_ProposalPaymentSheet> {
             ),
             const SizedBox(height: 8),
             Text(
-              transaction == null
+              isDeclined
+                  ? 'Proposta recusada.'
+                  : transaction == null
                   ? 'Preparando transação de pagamento.'
                   : isReleased
                       ? 'Pagamento liberado.'
@@ -898,7 +946,30 @@ class _ProposalPaymentSheetState extends ConsumerState<_ProposalPaymentSheet> {
               ],
             ],
             const SizedBox(height: 20),
-            if (transaction == null) ...[
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.tonalIcon(
+                onPressed: (_isBusy || _isRefreshing) ? null : _refreshStatus,
+                icon: _isRefreshing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh_rounded),
+                label: Text(_isRefreshing ? 'Atualizando status' : 'Atualizar status'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (isDeclined) ...[
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: null,
+                  child: const Text('Proposta recusada'),
+                ),
+              ),
+            ] else if (transaction == null) ...[
               const Center(child: CircularProgressIndicator()),
             ] else if (isReleased) ...[
               SizedBox(
@@ -944,7 +1015,9 @@ class _ProposalPaymentSheetState extends ConsumerState<_ProposalPaymentSheet> {
                 ),
               ),
             ],
-          ],
+              ],
+            ),
+          ),
         ),
       ),
     );

@@ -212,6 +212,41 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     }
   }
 
+  Future<void> refreshProposalPaymentStatus({
+    required String requestId,
+    required String proposalId,
+  }) async {
+    debugPrint('[ChatDetailNotifier] Atualizando status da proposta $proposalId');
+    try {
+      final proposals = await _getProposalsByRequest.call(requestId);
+      final mergedProposals = _mergeAndSortProposals(
+        proposals.where((proposal) => !_pendingRemovedProposalIds.contains(proposal.id)).toList(),
+        _pendingProposalUpdates,
+      );
+
+      ProposalEntity? refreshedProposal;
+      for (final proposal in mergedProposals) {
+        if (proposal.id == proposalId) {
+          refreshedProposal = proposal;
+          break;
+        }
+      }
+
+      final paymentTransaction = refreshedProposal != null && refreshedProposal.isAccepted
+          ? await _getTransactionByProposal.call(refreshedProposal.id)
+          : null;
+
+      state = state.copyWith(
+        proposals: AsyncValue.data(mergedProposals),
+        paymentTransaction: AsyncValue.data(paymentTransaction),
+      );
+      debugPrint('[ChatDetailNotifier] Status da proposta atualizado com sucesso');
+    } catch (e, st) {
+      debugPrint('[ChatDetailNotifier] Erro ao atualizar status da proposta: $e\nStackTrace: $st');
+      rethrow;
+    }
+  }
+
   Future<void> subscribeToUpdates(String chatId, String requestId) async {
     debugPrint('[ChatDetailNotifier] Abrindo realtime listeners para chat $chatId e request $requestId');
     
