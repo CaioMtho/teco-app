@@ -277,12 +277,8 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
           ],
         ),
       ),
-      body: AnimatedPadding(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOutCubic,
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-        child: SafeArea(
-          child: Column(
+      body: SafeArea(
+        child: Column(
           children: [
             // Sticky proposal header
             detailState.proposals.when(
@@ -300,6 +296,33 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
                     proposal: visibleProposal,
                     isRequester: isRequester,
                     paymentTransaction: detailState.paymentTransaction.valueOrNull,
+                    onRefreshStatus: visibleProposal.isAccepted
+                        ? () async {
+                            final messenger = ScaffoldMessenger.of(context);
+                            await ref
+                                .read(chatDetailNotifierProvider.notifier)
+                                .refreshProposalPaymentStatus(
+                                  requestId: widget.requestId,
+                                  proposalId: visibleProposal.id,
+                                );
+
+                            if (!mounted) return;
+
+                            final refreshedTransaction = ref
+                                .read(chatDetailNotifierProvider)
+                                .paymentTransaction
+                                .valueOrNull;
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  refreshedTransaction == null
+                                      ? 'Ainda sem transação. Tente de novo em instantes.'
+                                      : 'Status atualizado',
+                                ),
+                              ),
+                            );
+                          }
+                        : null,
                     onAccept: () async {
                       final messenger = ScaffoldMessenger.of(context);
                       try {
@@ -452,7 +475,6 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
             ),
           ],
         ),
-        ),
       ),
     );
   }
@@ -528,6 +550,7 @@ class _StickyProposalHeader extends StatelessWidget {
     required this.proposal,
     required this.isRequester,
     required this.paymentTransaction,
+    this.onRefreshStatus,
     required this.onAccept,
     required this.onCancel,
     required this.onDecline,
@@ -537,6 +560,7 @@ class _StickyProposalHeader extends StatelessWidget {
   final ProposalEntity proposal;
   final bool isRequester;
   final TransactionEntity? paymentTransaction;
+  final VoidCallback? onRefreshStatus;
   final VoidCallback onAccept;
   final VoidCallback onCancel;
   final VoidCallback onDecline;
@@ -669,18 +693,32 @@ class _StickyProposalHeader extends StatelessWidget {
                 ),
               ),
             ] else ...[
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: null,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: isEscrow ? const Color(0xFF22C55E) : const Color(0xFF9A7BFF),
-                  ),
-                  child: Text(
-                    isEscrow ? 'Aguardando conclusão' : 'Aguardando pagamento',
+              if (isEscrow) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: null,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF22C55E),
+                    ),
+                    child: const Text('Aguardando conclusão'),
                   ),
                 ),
-              ),
+              ] else ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.tonalIcon(
+                    onPressed: onRefreshStatus,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Atualizar status'),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Aguardando pagamento',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white70),
+                ),
+              ],
             ],
           ],
         ],
@@ -736,6 +774,22 @@ class _ProposalPaymentSheetState extends ConsumerState<_ProposalPaymentSheet> {
       await ref.read(chatDetailNotifierProvider.notifier).refreshProposalPaymentStatus(
         requestId: widget.requestId,
         proposalId: widget.proposal.id,
+      );
+
+      if (!mounted) return;
+
+      final refreshedTransaction = ref
+          .read(chatDetailNotifierProvider)
+          .paymentTransaction
+          .valueOrNull;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            refreshedTransaction == null
+                ? 'Ainda sem transação. Tente de novo em instantes.'
+                : 'Status atualizado',
+          ),
+        ),
       );
     } catch (e) {
       if (!mounted) return;

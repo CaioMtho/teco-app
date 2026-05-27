@@ -33,7 +33,7 @@ class ProfileRemoteDataSource {
       'cpf_cnpj': cpfCnpj,
     };
 
-    if (location != null) {
+    if (location != null && _isValidLatLng(location)) {
       updatePayload['location'] =
           'POINT(${location.longitude} ${location.latitude})';
     }
@@ -115,7 +115,8 @@ class ProfileRemoteDataSource {
     final lat = row['location_lat'] ?? row['lat'] ?? row['latitude'];
     final lng = row['location_lng'] ?? row['lng'] ?? row['longitude'];
     if (lat is num && lng is num) {
-      return LatLng(lat.toDouble(), lng.toDouble());
+      final location = LatLng(lat.toDouble(), lng.toDouble());
+      return _isValidLatLng(location) ? location : null;
     }
 
     return _locationFromDynamic(row['location']);
@@ -188,7 +189,8 @@ class ProfileRemoteDataSource {
         final longitude = coordinates[0];
         final latitude = coordinates[1];
         if (longitude is num && latitude is num) {
-          return LatLng(latitude.toDouble(), longitude.toDouble());
+          final location = LatLng(latitude.toDouble(), longitude.toDouble());
+          return _isValidLatLng(location) ? location : null;
         }
       }
     }
@@ -199,11 +201,21 @@ class ProfileRemoteDataSource {
         final longitude = double.tryParse(match.group(1)!);
         final latitude = double.tryParse(match.group(2)!);
         if (longitude != null && latitude != null) {
-          return LatLng(latitude, longitude);
+          final location = LatLng(latitude, longitude);
+          return _isValidLatLng(location) ? location : null;
         }
       }
     }
 
     return null;
+  }
+
+  bool _isValidLatLng(LatLng location) {
+    return location.latitude.isFinite &&
+        location.longitude.isFinite &&
+        location.latitude >= -90 &&
+        location.latitude <= 90 &&
+        location.longitude >= -180 &&
+        location.longitude <= 180;
   }
 }

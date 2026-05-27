@@ -11,9 +11,11 @@ import '../../domain/entities/auth_user.dart' as auth_entity;
 import '../../domain/repositories/auth_repository.dart';
 import '../../domain/usecases/get_current_auth_user_usecase.dart';
 import '../../domain/usecases/observe_auth_state_usecase.dart';
+import '../../domain/usecases/send_password_reset_email_usecase.dart';
 import '../../domain/usecases/sign_in_usecase.dart';
 import '../../domain/usecases/sign_out_usecase.dart';
 import '../../domain/usecases/sign_up_usecase.dart';
+import '../../domain/usecases/update_password_usecase.dart';
 import '../../../profile/presentation/providers/profile_providers.dart';
 import '../../../profile/domain/exceptions/profile_exceptions.dart';
 
@@ -43,6 +45,15 @@ final observeAuthStateUseCaseProvider = Provider<ObserveAuthStateUseCase>((ref) 
 
 final getCurrentAuthUserUseCaseProvider = Provider<GetCurrentAuthUserUseCase>((ref) {
   return GetCurrentAuthUserUseCase(ref.read(authRepositoryProvider));
+});
+
+final sendPasswordResetEmailUseCaseProvider =
+    Provider<SendPasswordResetEmailUseCase>((ref) {
+  return SendPasswordResetEmailUseCase(ref.read(authRepositoryProvider));
+});
+
+final updatePasswordUseCaseProvider = Provider<UpdatePasswordUseCase>((ref) {
+  return UpdatePasswordUseCase(ref.read(authRepositoryProvider));
 });
 
 final authControllerProvider =
@@ -85,6 +96,22 @@ class AuthController extends AsyncNotifier<AppAuthState> {
 
   Future<void> signOut() {
     return ref.read(signOutUseCaseProvider).call();
+  }
+
+  Future<void> sendPasswordResetEmail({
+    required String email,
+    required String redirectTo,
+  }) {
+    return ref.read(sendPasswordResetEmailUseCaseProvider).call(
+          email: email,
+          redirectTo: redirectTo,
+        );
+  }
+
+  Future<void> updatePassword({
+    required String password,
+  }) {
+    return ref.read(updatePasswordUseCaseProvider).call(password: password);
   }
 
   Future<void> _refreshFromAuthState(auth_entity.AuthUser? authUser) async {

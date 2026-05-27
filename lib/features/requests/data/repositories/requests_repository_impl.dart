@@ -23,6 +23,14 @@ class RequestsRepositoryImpl implements RequestsRepository {
       debugPrint('[RequestsRepository] ${openRequests.length} requisições abertas obtidas');
 
       final nearby = openRequests.where((request) {
+        if (!request.location.latitude.isFinite ||
+            !request.location.longitude.isFinite) {
+          debugPrint(
+            '[RequestsRepository] Requisição ignorada por localização inválida: ${request.title}',
+          );
+          return false;
+        }
+
         final requestDistance =
             _distance.as(LengthUnit.Kilometer, center, request.location);
         final isWithinRadius = requestDistance <= radiusKm;

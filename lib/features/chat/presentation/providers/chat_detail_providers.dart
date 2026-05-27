@@ -180,12 +180,10 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
 
       final messages = await _getChatMessages.call(chatId);
       final proposals = await _getProposalsByRequest.call(requestId);
-      final acceptedProposal = proposals.where((proposal) => proposal.isAccepted).isNotEmpty
-          ? proposals.firstWhere((proposal) => proposal.isAccepted)
-          : null;
-      final paymentTransaction = acceptedProposal == null
+        final paymentProposal = _findPaymentProposal(proposals);
+        final paymentTransaction = paymentProposal == null
           ? null
-          : await _getTransactionByProposal.call(acceptedProposal.id);
+          : await _getTransactionByProposal.call(paymentProposal.id);
 
       state = state.copyWith(
         messages: AsyncValue.data(_mergeAndSortMessages(messages, _pendingMessageUpdates)),
@@ -232,7 +230,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
         }
       }
 
-      final paymentTransaction = refreshedProposal != null && refreshedProposal.isAccepted
+        final paymentTransaction = refreshedProposal != null && _isPaymentRelevantProposal(refreshedProposal)
           ? await _getTransactionByProposal.call(refreshedProposal.id)
           : null;
 
@@ -350,6 +348,12 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       return currentTransaction;
     }
 
+    final existingTransaction = await _getTransactionByProposal.call(proposal.id);
+    if (existingTransaction != null) {
+      state = state.copyWith(paymentTransaction: AsyncValue.data(existingTransaction));
+      return existingTransaction;
+    }
+
     final transaction = await _createTransaction.call(
       proposalId: proposal.id,
       amount: proposal.amount,
@@ -400,6 +404,20 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       status: 'open',
     );
     state = state.copyWith(paymentTransaction: const AsyncValue.data(null));
+  }
+
+  bool _isPaymentRelevantProposal(ProposalEntity proposal) {
+    return proposal.isAccepted || proposal.status == 'released';
+  }
+
+  ProposalEntity? _findPaymentProposal(List<ProposalEntity> proposals) {
+    for (final proposal in proposals) {
+      if (_isPaymentRelevantProposal(proposal)) {
+        return proposal;
+      }
+    }
+
+    return null;
   }
 
   void _applyMessageUpdate(MessageEntity message) {

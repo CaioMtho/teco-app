@@ -1,16 +1,86 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'features/auth/presentation/pages/auth_screen.dart';
 import 'features/auth/presentation/providers/auth_providers.dart';
 import 'features/requests/presentation/pages/requests_map_page.dart';
+import 'core/services/supabase_service.dart';
 
-class App extends StatelessWidget {
+class App extends StatefulWidget {
   const App({super.key});
+
+  @override
+  State<App> createState() => _AppState();
+}
+
+class _AppState extends State<App> {
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+  StreamSubscription<AuthState>? _authSubscription;
+  bool _recoveryPageVisible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _authSubscription = SupabaseService.client.auth.onAuthStateChange.listen(
+      (data) {
+        if (data.event == AuthChangeEvent.passwordRecovery) {
+          _openRecoveryPage();
+        }
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _openRecoveryPage() {
+    if (_recoveryPageVisible) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+
+      final navigator = _navigatorKey.currentState;
+      if (navigator == null) {
+        return;
+      }
+
+      _recoveryPageVisible = true;
+      navigator.push(
+        MaterialPageRoute<void>(
+          builder: (_) => ResetPasswordPage(
+            onCompleted: _closeRecoveryPage,
+          ),
+        ),
+      );
+    });
+  }
+
+  void _closeRecoveryPage() {
+    if (!mounted) {
+      return;
+    }
+
+    _recoveryPageVisible = false;
+    final navigator = _navigatorKey.currentState;
+    if (navigator != null && navigator.canPop()) {
+      navigator.pop();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _navigatorKey,
       title: 'TECO',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(

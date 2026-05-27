@@ -9,6 +9,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../domain/entities/auth_sign_up_payload.dart';
 import '../providers/auth_providers.dart';
 
+const _kPasswordRecoveryRedirect = 'com.teco.teco_app://login-callback/';
+
 // ─── Paleta & Tema ────────────────────────────────────────────────────────────
 const _kPrimary = Color(0xFF0A0A0A);
 const _kAccent = Color.fromARGB(255, 246, 244, 244);
@@ -18,6 +20,8 @@ const _kBorder = Color(0xFF2A2A2A);
 const _kError = Color(0xFFFF4D4D);
 const _kGreen = Color(0xFF22C55E);
 const _kGreenBg = Color(0xFF0D2B0D);
+
+ 
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({
@@ -247,14 +251,21 @@ class _LoginFormState extends ConsumerState<_LoginForm> {
                 ),
                 onPressed: () => setState(() => _obscure = !_obscure),
               ),
-              validator: (v) =>
-                  (v == null || v.length < 6) ? 'Mínimo 6 caracteres' : null,
+              validator: _validatePassword,
             ),
             const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
-                onPressed: () {},
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => ForgotPasswordPage(
+                        initialEmail: _emailCtrl.text.trim(),
+                      ),
+                    ),
+                  );
+                },
                 style: TextButton.styleFrom(
                   foregroundColor: _kMuted,
                   padding: EdgeInsets.zero,
@@ -272,6 +283,239 @@ class _LoginFormState extends ConsumerState<_LoginForm> {
               onPressed: _submit,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class ForgotPasswordPage extends ConsumerStatefulWidget {
+  const ForgotPasswordPage({super.key, this.initialEmail});
+
+  final String? initialEmail;
+
+  @override
+  ConsumerState<ForgotPasswordPage> createState() => _ForgotPasswordPageState();
+}
+
+class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _emailCtrl;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _emailCtrl = TextEditingController(text: widget.initialEmail ?? '');
+  }
+
+  @override
+  void dispose() {
+    _emailCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _sendResetEmail() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _loading = true);
+    try {
+      await ref.read(authControllerProvider.notifier).sendPasswordResetEmail(
+            email: _emailCtrl.text.trim(),
+            redirectTo: _kPasswordRecoveryRedirect,
+          );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Email de recuperação enviado.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      Navigator.of(context).pop();
+    } on AuthException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.message),
+          backgroundColor: _kError,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Não foi possível enviar recuperação.'),
+          backgroundColor: _kError,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _kPrimary,
+      appBar: AppBar(
+        backgroundColor: _kPrimary,
+        foregroundColor: Colors.white,
+        title: const Text('Esqueci minha senha'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _Field(
+                controller: _emailCtrl,
+                label: 'E-mail',
+                hint: 'voce@email.com',
+                keyboardType: TextInputType.emailAddress,
+                validator: _validateEmail,
+              ),
+              const SizedBox(height: 24),
+              _PrimaryButton(
+                label: 'Enviar link de recuperação',
+                loading: _loading,
+                onPressed: _sendResetEmail,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class ResetPasswordPage extends ConsumerStatefulWidget {
+  const ResetPasswordPage({super.key, this.onCompleted});
+
+  final VoidCallback? onCompleted;
+
+  @override
+  ConsumerState<ResetPasswordPage> createState() => _ResetPasswordPageState();
+}
+
+class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
+  final _formKey = GlobalKey<FormState>();
+  final _passwordCtrl = TextEditingController();
+  final _confirmCtrl = TextEditingController();
+  bool _loading = false;
+  bool _obscure = true;
+  bool _obscureConfirm = true;
+
+  @override
+  void dispose() {
+    _passwordCtrl.dispose();
+    _confirmCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _updatePassword() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _loading = true);
+    try {
+      await ref.read(authControllerProvider.notifier).updatePassword(
+            password: _passwordCtrl.text,
+          );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Senha atualizada com sucesso.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      widget.onCompleted?.call();
+    } on AuthException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.message),
+          backgroundColor: _kError,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Não foi possível atualizar a senha.'),
+          backgroundColor: _kError,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _kPrimary,
+      appBar: AppBar(
+        backgroundColor: _kPrimary,
+        foregroundColor: Colors.white,
+        title: const Text('Nova senha'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _Field(
+                controller: _passwordCtrl,
+                label: 'Nova senha',
+                hint: '••••••••',
+                obscure: _obscure,
+                suffixIcon: IconButton(
+                  onPressed: () => setState(() => _obscure = !_obscure),
+                  icon: Icon(
+                    _obscure ? Icons.visibility_off : Icons.visibility,
+                    color: _kMuted,
+                  ),
+                ),
+                validator: _validatePassword,
+              ),
+              const SizedBox(height: 14),
+              _Field(
+                controller: _confirmCtrl,
+                label: 'Confirmar senha',
+                hint: '••••••••',
+                obscure: _obscureConfirm,
+                suffixIcon: IconButton(
+                  onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                  icon: Icon(
+                    _obscureConfirm ? Icons.visibility_off : Icons.visibility,
+                    color: _kMuted,
+                  ),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) return 'Confirme senha';
+                  if (value != _passwordCtrl.text) return 'Senhas não coincidem';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 24),
+              _PrimaryButton(
+                label: 'Salvar nova senha',
+                loading: _loading,
+                onPressed: _updatePassword,
+              ),
+            ],
+          ),
         ),
       ),
     );

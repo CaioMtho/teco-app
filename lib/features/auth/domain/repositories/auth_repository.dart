@@ -6,6 +6,15 @@ abstract class AuthRepository {
 
   AuthUser? get currentAuthUser;
 
+  Future<void> sendPasswordResetEmail({
+    required String email,
+    required String redirectTo,
+  });
+
+  Future<void> updatePassword({
+    required String password,
+  });
+
   Future<void> signInWithPassword({
     required String email,
     required String password,

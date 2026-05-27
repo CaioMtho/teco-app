@@ -11,7 +11,11 @@ class RequestsRemoteDataSource {
       final response = await SupabaseService.client.rpc('list_requests_with_geojson');
       final rows = List<Map<String, dynamic>>.from(response as List);
       debugPrint('[RequestsRemoteDataSource] RPC retornou ${rows.length} requisições');
-      return rows.map(_mapRowToEntity).toList(growable: false);
+
+      return rows
+          .map(_mapRowToEntityOrNull)
+          .whereType<RequestEntity>()
+          .toList(growable: false);
     } catch (e, st) {
       debugPrint('[RequestsRemoteDataSource] Erro ao carregar requisições abertas: $e\nStackTrace: $st');
       rethrow;
@@ -34,7 +38,8 @@ class RequestsRemoteDataSource {
       
       final userRequests = rows
           .where((row) => row['requester_id'] == userId && row['status'] == 'open')
-          .map(_mapRowToEntity)
+          .map(_mapRowToEntityOrNull)
+          .whereType<RequestEntity>()
           .toList(growable: false);
       debugPrint('[RequestsRemoteDataSource] Filtrado para ${userRequests.length} requisições do usuário');
       return userRequests;
@@ -148,6 +153,15 @@ class RequestsRemoteDataSource {
     }
   }
 
+  RequestEntity? _mapRowToEntityOrNull(Map<String, dynamic> row) {
+    try {
+      return _mapRowToEntity(row);
+    } catch (e) {
+      debugPrint('[RequestsRemoteDataSource] Requisição ignorada por localização inválida: $e');
+      return null;
+    }
+  }
+
   RequestEntity _mapRowToEntity(Map<String, dynamic> row) {
     debugPrint('[RequestsRemoteDataSource] Mapeando requisição: id=${row['id']}, título=${row['title']}');
     final id = row['id'].toString();
@@ -164,7 +178,6 @@ class RequestsRemoteDataSource {
     final longitude = _lonFromGeo(locationGeoJson);
 
     if (latitude == null || longitude == null) {
-      debugPrint('[RequestsRemoteDataSource] GeoJSON inválido para requisição $id');
       throw StateError('Invalid location_geojson for request $id');
     }
 

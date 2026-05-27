@@ -18,7 +18,6 @@ class ProfilePage extends ConsumerStatefulWidget {
 }
 
 class _ProfilePageState extends ConsumerState<ProfilePage> {
-
   ProfileEntity? _profile;
   bool _isLoading = true;
   bool _isSaving = false;
@@ -37,7 +36,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     });
 
     try {
-      final profile = await ref.read(getCurrentUserProfileUseCaseProvider).call();
+      final profile = await ref
+          .read(getCurrentUserProfileUseCaseProvider)
+          .call();
       if (!mounted) {
         return;
       }
@@ -74,9 +75,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             child: const Text('Cancelar'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.redAccent,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () => Navigator.of(context).pop(true),
             child: const Text('Sair'),
           ),
@@ -121,10 +120,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       final updatedProfile = await ref
           .read(updateCurrentUserProfileUseCaseProvider)
           .call(
-        fullName: payload.fullName,
-        cpfCnpj: payload.cpfCnpj,
-        location: payload.location,
-      );
+            fullName: payload.fullName,
+            cpfCnpj: payload.cpfCnpj,
+            location: payload.location,
+          );
 
       if (!mounted) {
         return;
@@ -143,9 +142,53 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Não foi possível atualizar o perfil.'),
-        ),
+        const SnackBar(content: Text('Não foi possível atualizar o perfil.')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _openPasswordSheet() async {
+    final payload = await showModalBottomSheet<_PasswordChangePayload>(
+      context: context,
+      backgroundColor: const Color(0xFF222431),
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => const _PasswordChangeSheet(),
+    );
+
+    if (payload == null) {
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      await ref
+          .read(authControllerProvider.notifier)
+          .updatePassword(password: payload.password);
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Senha atualizada com sucesso.')),
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não foi possível atualizar a senha.')),
       );
     } finally {
       if (mounted) {
@@ -185,8 +228,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                       child: ConstrainedBox(
                         constraints: BoxConstraints(
-                          minHeight:
-                              MediaQuery.of(context).size.height - 88,
+                          minHeight: MediaQuery.of(context).size.height - 88,
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -238,7 +280,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                                   ),
                                   _ProfileInfoRow(
                                     label: 'Localização',
-                                    value: profile.locationLabel ??
+                                    value:
+                                        profile.locationLabel ??
                                         'Não informada',
                                   ),
                                 ],
@@ -249,16 +292,26 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                                 icon: const Icon(Icons.edit_rounded),
                                 label: const Text('Editar informações'),
                               ),
-                              const SizedBox(height: 22),
-                              OutlinedButton.icon
-                              (onPressed: _logout,
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.redAccent,
-                                side: const BorderSide(color: Colors.redAccent),
+                              const SizedBox(height: 12),
+                              OutlinedButton.icon(
+                                onPressed: _isSaving
+                                    ? null
+                                    : _openPasswordSheet,
+                                icon: const Icon(Icons.lock_reset_rounded),
+                                label: const Text('Trocar senha'),
                               ),
-                              icon: const Icon(Icons.logout_rounded),
-                              label: const Text('Sair da conta'),
-                              )
+                              const SizedBox(height: 22),
+                              OutlinedButton.icon(
+                                onPressed: _logout,
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.redAccent,
+                                  side: const BorderSide(
+                                    color: Colors.redAccent,
+                                  ),
+                                ),
+                                icon: const Icon(Icons.logout_rounded),
+                                label: const Text('Sair da conta'),
+                              ),
                             ],
                           ],
                         ),
@@ -318,9 +371,9 @@ class _ProfileHeader extends StatelessWidget {
           child: Text(
             'Perfil',
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                ),
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
         _HeaderActionButton(
@@ -370,17 +423,17 @@ class _ProfileHero extends StatelessWidget {
             profile.fullName,
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                ),
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+            ),
           ),
           const SizedBox(height: 8),
           Text(
             email ?? 'Não informado',
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.white70,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: Colors.white70),
           ),
           const SizedBox(height: 16),
           Wrap(
@@ -394,12 +447,9 @@ class _ProfileHero extends StatelessWidget {
                     : Icons.info_outline_rounded,
                 label: profile.isVerified == true
                     ? 'Verificado'
-                  : 'Conta não verificada',
+                    : 'Conta não verificada',
               ),
-              _ProfileBadge(
-                icon: Icons.badge_rounded,
-                label: profileTypeLabel,
-              ),
+              _ProfileBadge(icon: Icons.badge_rounded, label: profileTypeLabel),
             ],
           ),
         ],
@@ -434,16 +484,16 @@ class _ProfileSectionCard extends StatelessWidget {
           Text(
             title,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                ),
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: 6),
           Text(
             subtitle,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Colors.white54,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: Colors.white54),
           ),
           const SizedBox(height: 16),
           ...children,
@@ -469,17 +519,17 @@ class _ProfileInfoRow extends StatelessWidget {
           Text(
             label,
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: Colors.white54,
-                  fontWeight: FontWeight.w600,
-                ),
+              color: Colors.white54,
+              fontWeight: FontWeight.w600,
+            ),
           ),
           const SizedBox(height: 4),
           Text(
             value,
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),
@@ -509,9 +559,9 @@ class _ProfileBadge extends StatelessWidget {
           Text(
             label,
             style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),
@@ -550,9 +600,9 @@ class _ProfileAvatar extends StatelessWidget {
             : Text(
                 initials,
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                    ),
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
       ),
     );
@@ -585,10 +635,7 @@ class _HeaderActionButton extends StatelessWidget {
           child: SizedBox(
             width: 40,
             height: 40,
-            child: Icon(
-              icon,
-              color: color ?? Colors.white,
-            ),
+            child: Icon(icon, color: color ?? Colors.white),
           ),
         ),
       ),
@@ -616,9 +663,9 @@ class _ProfileErrorCard extends StatelessWidget {
         children: [
           Text(
             message,
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: Colors.white,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyLarge?.copyWith(color: Colors.white),
           ),
           const SizedBox(height: 12),
           FilledButton(
@@ -629,6 +676,141 @@ class _ProfileErrorCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _PasswordChangePayload {
+  const _PasswordChangePayload({required this.password});
+
+  final String password;
+}
+
+class _PasswordChangeSheet extends StatefulWidget {
+  const _PasswordChangeSheet();
+
+  @override
+  State<_PasswordChangeSheet> createState() => _PasswordChangeSheetState();
+}
+
+class _PasswordChangeSheetState extends State<_PasswordChangeSheet> {
+  final _formKey = GlobalKey<FormState>();
+  final _passwordCtrl = TextEditingController();
+  final _confirmCtrl = TextEditingController();
+  bool _obscure = true;
+  bool _obscureConfirm = true;
+
+  @override
+  void dispose() {
+    _passwordCtrl.dispose();
+    _confirmCtrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) return;
+
+    Navigator.of(
+      context,
+    ).pop(_PasswordChangePayload(password: _passwordCtrl.text));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 8, 20, 20 + bottomInset),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Trocar senha',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _passwordCtrl,
+              obscureText: _obscure,
+              style: const TextStyle(color: Colors.white),
+              decoration: _profileInputDecoration('Nova senha').copyWith(
+                suffixIcon: IconButton(
+                  onPressed: () => setState(() => _obscure = !_obscure),
+                  icon: Icon(
+                    _obscure ? Icons.visibility_off : Icons.visibility,
+                    color: Colors.white70,
+                  ),
+                ),
+              ),
+              validator: _validatePassword,
+            ),
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: _confirmCtrl,
+              obscureText: _obscureConfirm,
+              style: const TextStyle(color: Colors.white),
+              decoration: _profileInputDecoration('Confirmar senha').copyWith(
+                suffixIcon: IconButton(
+                  onPressed: () =>
+                      setState(() => _obscureConfirm = !_obscureConfirm),
+                  icon: Icon(
+                    _obscureConfirm ? Icons.visibility_off : Icons.visibility,
+                    color: Colors.white70,
+                  ),
+                ),
+              ),
+              validator: (value) {
+                if (value == null || value.isEmpty) return 'Confirme senha';
+                if (value != _passwordCtrl.text) return 'Senhas não coincidem';
+                return null;
+              },
+            ),
+            const SizedBox(height: 18),
+            FilledButton(onPressed: _submit, child: const Text('Salvar senha')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+InputDecoration _profileInputDecoration(String label) {
+  return InputDecoration(
+    labelText: label,
+    labelStyle: const TextStyle(color: Colors.white70),
+    filled: true,
+    fillColor: const Color(0xFF1E1E1E),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: Color(0xFF2A2A2A)),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: Color(0xFF2A2A2A)),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(
+        color: ThemeData.light().colorScheme.primary,
+        width: 1.5,
+      ),
+    ),
+  );
+}
+
+String? _validatePassword(String? v) {
+  if (v == null || v.isEmpty) return 'Informe uma senha';
+  if (v.length < 8) return 'Mínimo 8 caracteres';
+  if (!RegExp(r'[A-Z]').hasMatch(v)) {
+    return 'Inclua ao menos uma letra maiúscula';
+  }
+  if (!RegExp(r'[0-9]').hasMatch(v)) return 'Inclua ao menos um número';
+  return null;
 }
 
 class _EditProfileSheet extends StatefulWidget {
@@ -704,8 +886,9 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
       }
 
       final position = await Geolocator.getCurrentPosition(
-        locationSettings:
-            const LocationSettings(accuracy: LocationAccuracy.high),
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
       );
       final currentLocation = LatLng(position.latitude, position.longitude);
       final placemarks = await placemarkFromCoordinates(
@@ -716,7 +899,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
       final address = p != null
           ? _formatPlacemark(p)
           : '${position.latitude.toStringAsFixed(4)}, '
-            '${position.longitude.toStringAsFixed(4)}';
+                '${position.longitude.toStringAsFixed(4)}';
 
       setState(() {
         _location = currentLocation;
@@ -806,9 +989,9 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   String _formatPlacemark(Placemark p) {
@@ -886,16 +1069,16 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                 Text(
                   'Editar perfil',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   'Ajuste nome, CPF/CNPJ e localização.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.white70,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: Colors.white70),
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
@@ -919,10 +1102,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                   controller: _cpfCnpjController,
                   style: const TextStyle(color: inputTextColor),
                   cursorColor: colorScheme.primary,
-                  decoration: decoration(
-                    label: 'CPF/CNPJ',
-                    hint: 'Opcional',
-                  ),
+                  decoration: decoration(label: 'CPF/CNPJ', hint: 'Opcional'),
                   keyboardType: TextInputType.text,
                   inputFormatters: [
                     FilteringTextInputFormatter.allow(RegExp(r'[0-9./\- ]')),
@@ -932,17 +1112,17 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                 const SizedBox(height: 10),
                 Text(
                   'Use CPF com 11 dígitos ou CNPJ com 14 dígitos.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.white60,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: Colors.white60),
                 ),
                 const SizedBox(height: 16),
                 Text(
                   'Localização',
                   style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Container(
@@ -1017,8 +1197,8 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: colorScheme.primary,
                             foregroundColor: colorScheme.onPrimary,
-                            disabledBackgroundColor:
-                                colorScheme.primary.withValues(alpha: 0.4),
+                            disabledBackgroundColor: colorScheme.primary
+                                .withValues(alpha: 0.4),
                             elevation: 0,
                             padding: EdgeInsets.zero,
                             shape: RoundedRectangleBorder(
@@ -1049,7 +1229,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                       ),
                       child: Column(
                         children: List.generate(_geocodingResults.length, (i) {
-                              final label = _formatPlacemark(_placemarks[i]);
+                          final label = _formatPlacemark(_placemarks[i]);
                           final isLast = i == _geocodingResults.length - 1;
                           return InkWell(
                             onTap: () => _selectGeocodingResult(i),
@@ -1173,7 +1353,9 @@ class _ProfileLocationStatusCard extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: hasLocation ? const Color(0x1222C55E) : const Color(0xFF2A2D3B),
+          color: hasLocation
+              ? const Color(0x1222C55E)
+              : const Color(0xFF2A2D3B),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: hasLocation ? const Color(0xFF22C55E) : Colors.white24,
@@ -1255,7 +1437,9 @@ class _ProfileLocationModeTab extends StatelessWidget {
           duration: const Duration(milliseconds: 160),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: selected ? colorScheme.primary.withValues(alpha: 0.25) : null,
+            color: selected
+                ? colorScheme.primary.withValues(alpha: 0.25)
+                : null,
             borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
@@ -1296,14 +1480,20 @@ class _ProfileEditPayload {
 }
 
 String _initialsFromName(String fullName) {
-  final parts = fullName.trim().split(RegExp(r'\s+')).where((part) => part.isNotEmpty).toList();
+  final parts = fullName
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((part) => part.isNotEmpty)
+      .toList();
   if (parts.isEmpty) {
     return 'U';
   }
 
   if (parts.length == 1) {
     final first = parts.first;
-    return first.length >= 2 ? first.substring(0, 2).toUpperCase() : first.substring(0, 1).toUpperCase();
+    return first.length >= 2
+        ? first.substring(0, 2).toUpperCase()
+        : first.substring(0, 1).toUpperCase();
   }
 
   return '${parts.first[0]}${parts.last[0]}'.toUpperCase();

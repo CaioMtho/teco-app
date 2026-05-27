@@ -498,7 +498,7 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
 
   Future<LatLng> _resolveMainLocation() async {
     final deviceLocation = await _resolveDeviceLocation();
-    if (deviceLocation != null && _isFiniteLatLng(deviceLocation)) {
+    if (deviceLocation != null && _isValidLatLng(deviceLocation)) {
       return deviceLocation;
     }
 
@@ -507,19 +507,24 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
         .valueOrNull
         ?.profile
         ?.location;
-    if (profileLocation != null && _isFiniteLatLng(profileLocation)) {
+    if (profileLocation != null && _isValidLatLng(profileLocation)) {
       return profileLocation;
     }
 
     return _defaultMapCenter;
   }
 
-  bool _isFiniteLatLng(LatLng point) {
-    return point.latitude.isFinite && point.longitude.isFinite;
+  bool _isValidLatLng(LatLng point) {
+    return point.latitude.isFinite &&
+        point.longitude.isFinite &&
+        point.latitude >= -90 &&
+        point.latitude <= 90 &&
+        point.longitude >= -180 &&
+        point.longitude <= 180;
   }
 
   LatLng _mapCenter() {
-    return _isFiniteLatLng(_mainLocation) ? _mainLocation : _defaultMapCenter;
+    return _isValidLatLng(_mainLocation) ? _mainLocation : _defaultMapCenter;
   }
 
   void _focusMapOnMainLocationIfNeeded() {
@@ -531,7 +536,7 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
     }
 
     final mapCenter = _mapCenter();
-    if (!_isFiniteLatLng(mapCenter)) {
+    if (!_isValidLatLng(mapCenter)) {
       return;
     }
 
@@ -732,7 +737,7 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
                       hoverElevation: 10,
                       onPressed: () {
                         final mapCenter = _mapCenter();
-                        if (_isFiniteLatLng(mapCenter)) {
+                        if (_isValidLatLng(mapCenter)) {
                           _mapController.move(mapCenter, 13.5);
                         }
                       },
@@ -776,7 +781,7 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
 
   List<Marker> _buildRequestMarkers(ColorScheme colorScheme) {
     return _openRequests
-        .where((request) => _isFiniteLatLng(request.location))
+      .where((request) => _isValidLatLng(request.location))
         .map(
           (request) => Marker(
             point: request.location,

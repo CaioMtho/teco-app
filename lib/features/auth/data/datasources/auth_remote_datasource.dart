@@ -1,3 +1,4 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/services/supabase_service.dart';
 import '../../domain/entities/auth_sign_up_payload.dart';
@@ -27,6 +28,24 @@ class AuthRemoteDataSource {
     return auth_entity.AuthUser(
       id: user.id,
       email: user.email,
+    );
+  }
+
+  Future<void> sendPasswordResetEmail({
+    required String email,
+    required String redirectTo,
+  }) async {
+    await SupabaseService.client.auth.resetPasswordForEmail(
+      email,
+      redirectTo: redirectTo,
+    );
+  }
+
+  Future<void> updatePassword({
+    required String password,
+  }) async {
+    await SupabaseService.client.auth.updateUser(
+      UserAttributes(password: password),
     );
   }
 
