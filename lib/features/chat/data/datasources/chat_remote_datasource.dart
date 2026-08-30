@@ -1,12 +1,16 @@
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../../core/services/supabase_service.dart';
 import '../../domain/entities/chat_entity.dart';
 
 class ChatRemoteDataSource {
+  final SupabaseClient supabaseClient;
+
+  ChatRemoteDataSource(this.supabaseClient);
+
   Future<List<ChatEntity>> getUserChats() async {
     debugPrint('[ChatRemoteDataSource] Iniciando carregamento de chats do usuário');
-    final client = SupabaseService.client;
+    final client = supabaseClient;
     final userId = client.auth.currentUser?.id;
     if (userId == null) {
       debugPrint('[ChatRemoteDataSource] Usuário não autenticado');
@@ -32,7 +36,7 @@ class ChatRemoteDataSource {
               content: row['last_message_content']?.toString(),
               senderId: row['last_message_sender_id']?.toString(),
               createdAt: _dateFromDynamic(row['last_message_created_at']),
-              updatedAt: _dateFromDynamic(row['last_message_created_at']),
+              updatedAt: _dateFromDynamic(row['last_message_updated_at']),
               deletedAt: null,
             )
           : null;
@@ -83,7 +87,7 @@ class ChatRemoteDataSource {
     required String messageContent,
   }) async {
     debugPrint('[ChatRemoteDataSource] Criando novo chat para request: $requestId');
-    final client = SupabaseService.client;
+    final client = supabaseClient;
     final userId = client.auth.currentUser?.id;
     if (userId == null) {
       throw StateError('No authenticated user found');

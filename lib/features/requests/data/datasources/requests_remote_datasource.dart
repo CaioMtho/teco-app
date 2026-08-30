@@ -1,14 +1,25 @@
 import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../../core/services/supabase_service.dart';
 import '../../domain/entities/request_entity.dart';
 
 class RequestsRemoteDataSource {
-  Future<List<RequestEntity>> getOpenRequests() async {
+  const RequestsRemoteDataSource({required this.supabaseClient});
+
+  final SupabaseClient supabaseClient;
+  Future<List<RequestEntity>> getNearbyOpenRequests({
+    required double lat,
+    required double lon,
+    required double radiusMeters,
+  }) async {
     debugPrint('[RequestsRemoteDataSource] Iniciando carregamento de requisições abertas');
     try {
-      final response = await SupabaseService.client.rpc('list_requests_with_geojson');
+      final response = await supabaseClient.rpc('get_nearby_requests', params: {
+        'lat': lat,
+        'lon': lon,
+        'radius_meters': radiusMeters,
+      });
       final rows = List<Map<String, dynamic>>.from(response as List);
       debugPrint('[RequestsRemoteDataSource] RPC retornou ${rows.length} requisições');
 
@@ -24,7 +35,7 @@ class RequestsRemoteDataSource {
 
   Future<List<RequestEntity>> getCurrentUserOpenRequests() async {
     debugPrint('[RequestsRemoteDataSource] Iniciando carregamento de requisições do usuário atual');
-    final userId = SupabaseService.client.auth.currentUser?.id;
+    final userId = supabaseClient.auth.currentUser?.id;
     if (userId == null) {
       debugPrint('[RequestsRemoteDataSource] Usuário não autenticado');
       throw StateError('No authenticated user found to load requests');
@@ -32,12 +43,17 @@ class RequestsRemoteDataSource {
     debugPrint('[RequestsRemoteDataSource] userId obtido: $userId');
 
     try {
-      final response = await SupabaseService.client.rpc('list_requests_with_geojson');
+      final response = await supabaseClient
+          .from('requests')
+          .select()
+          .eq('requester_id', userId)
+          .eq('status', 'open')
+          .order('created_at', ascending: false);
+          
       final rows = List<Map<String, dynamic>>.from(response as List);
-      debugPrint('[RequestsRemoteDataSource] RPC retornou ${rows.length} requisições totais');
+      debugPrint('[RequestsRemoteDataSource] Consulta retornou ${rows.length} requisições totais');
       
       final userRequests = rows
-          .where((row) => row['requester_id'] == userId && row['status'] == 'open')
           .map(_mapRowToEntityOrNull)
           .whereType<RequestEntity>()
           .toList(growable: false);
@@ -59,7 +75,7 @@ class RequestsRemoteDataSource {
   }) async {
     debugPrint('[RequestsRemoteDataSource] Criando requisição: título=$title, remota=$isRemote, lat=$lat, lon=$lon');
     try {
-      await SupabaseService.client.rpc('create_request_with_location', params: {
+      await supabaseClient.rpc('create_request_with_location', params: {
         'p_title': title,
         'p_description': description,
         'p_status': 'open',
@@ -79,18 +95,18 @@ class RequestsRemoteDataSource {
     required String requestId,
     required String title,
     String? description,
-    String? budgetRange,
+    double? budgetRange,
     required bool isRemote,
   }) async {
     debugPrint('[RequestsRemoteDataSource] Atualizando requisição: id=$requestId, título=$title, remota=$isRemote');
-    final userId = SupabaseService.client.auth.currentUser?.id;
+    final userId = supabaseClient.auth.currentUser?.id;
     if (userId == null) {
       debugPrint('[RequestsRemoteDataSource] Usuário não autenticado para atualizar');
       throw StateError('No authenticated user found to update request');
     }
 
     try {
-      await SupabaseService.client
+      await supabaseClient
           .from('requests')
           .update({
             'title': title,
@@ -115,7 +131,7 @@ class RequestsRemoteDataSource {
   }) async {
     debugPrint('[RequestsRemoteDataSource] Atualizando status da requisição: id=$requestId, status=$status');
     try {
-      await SupabaseService.client
+      await supabaseClient
           .from('requests')
           .update({'status': status})
           .eq('id', requestId)
@@ -132,14 +148,14 @@ class RequestsRemoteDataSource {
     required String requestId,
   }) async {
     debugPrint('[RequestsRemoteDataSource] Deletando requisição: id=$requestId');
-    final userId = SupabaseService.client.auth.currentUser?.id;
+    final userId = supabaseClient.auth.currentUser?.id;
     if (userId == null) {
       debugPrint('[RequestsRemoteDataSource] Usuário não autenticado para deletar');
       throw StateError('No authenticated user found to delete request');
     }
 
     try {
-      await SupabaseService.client
+      await supabaseClient
           .from('requests')
           .delete()
           .eq('id', requestId)
@@ -169,7 +185,7 @@ class RequestsRemoteDataSource {
     final status = row['status'].toString();
     final description = row['description']?.toString();
     final requesterId = row['requester_id']?.toString();
-    final budgetRange = row['budget_range']?.toString();
+    final budgetRange = (row['budget_range'] as num?)?.toDouble();
     final isRemote = _boolFromDynamic(row['is_remote']);
     final createdAt = _dateFromDynamic(row['created_at']);
     final locationGeoJson = row['location_geojson'] as Map<String, dynamic>?;

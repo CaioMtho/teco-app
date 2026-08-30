@@ -41,6 +41,11 @@ class _ChatDetailPageState extends ConsumerState<ChatDetailPage> {
     _proposalAmountController = TextEditingController();
     _proposalMessageController = TextEditingController();
     _listViewController = ScrollController();
+    _listViewController.addListener(() {
+      if (_listViewController.position.pixels <= _listViewController.position.minScrollExtent + 200) {
+        ref.read(chatDetailNotifierProvider.notifier).loadMoreMessages(widget.chatId);
+      }
+    });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(chatDetailNotifierProvider.notifier).load(widget.chatId, widget.requestId);

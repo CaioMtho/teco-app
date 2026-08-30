@@ -1,16 +1,20 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../../core/services/supabase_service.dart';
 import '../../domain/entities/chat_entity.dart';
 import 'chat_realtime.dart';
 
 class ProposalsRemoteDataSource {
+  final SupabaseClient supabaseClient;
+
+  ProposalsRemoteDataSource(this.supabaseClient);
+
   Future<List<ProposalEntity>> getProposalsByRequestId(String requestId) async {
     debugPrint('[ProposalsRemoteDataSource] Carregando propostas para request: $requestId');
     try {
-      final client = SupabaseService.client;
+      final client = supabaseClient;
       final response = await client
           .from('proposals')
           .select()
@@ -35,7 +39,7 @@ class ProposalsRemoteDataSource {
   }) async {
     debugPrint('[ProposalsRemoteDataSource] Criando proposta para request: $requestId, amount: $amount');
     try {
-      final client = SupabaseService.client;
+      final client = supabaseClient;
       final userId = client.auth.currentUser?.id;
       if (userId == null) {
         throw StateError('No authenticated user found');
@@ -64,7 +68,7 @@ class ProposalsRemoteDataSource {
   Future<ProposalEntity> acceptProposal(String proposalId) async {
     debugPrint('[ProposalsRemoteDataSource] Aceitando proposta: $proposalId');
     try {
-      final client = SupabaseService.client;
+      final client = supabaseClient;
       final existingResponse = await client
           .from('proposals')
           .select()
@@ -95,7 +99,7 @@ class ProposalsRemoteDataSource {
   Future<void> declineProposal(String proposalId) async {
     debugPrint('[ProposalsRemoteDataSource] Recusando proposta: $proposalId');
     try {
-      final client = SupabaseService.client;
+      final client = supabaseClient;
       await client
           .from('proposals')
           .update({'status': 'declined'})
@@ -110,7 +114,7 @@ class ProposalsRemoteDataSource {
 
   Stream<ProposalEntity> listenToChatProposals(String requestId) {
     debugPrint('[ProposalsRemoteDataSource] Iniciando listener para propostas do request: $requestId');
-    final client = SupabaseService.client;
+    final client = supabaseClient;
     final controller = StreamController<ProposalEntity>();
 
     final realtime = ChatRealtime(supabase: client, topic: 'proposals:$requestId');

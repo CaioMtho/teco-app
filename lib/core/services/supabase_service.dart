@@ -4,8 +4,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class SupabaseService {
   SupabaseService._();
 
-  static SupabaseClient get client => Supabase.instance.client;
-
   static Future<void> initialize() async {
     final supabaseUrl = dotenv.env['SUPABASE_URL'];
     final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];

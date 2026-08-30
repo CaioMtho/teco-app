@@ -8,8 +8,8 @@ class ChatMessagesRepositoryImpl implements ChatMessagesRepository {
   ChatMessagesRepositoryImpl(this._remote);
 
   @override
-  Future<List<MessageEntity>> getChatMessages(String chatId) {
-    return _remote.getChatMessages(chatId);
+  Future<List<MessageEntity>> getChatMessages(String chatId, {int offset = 0, int limit = 50}) {
+    return _remote.getChatMessages(chatId, offset: offset, limit: limit);
   }
 
   @override

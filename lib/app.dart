@@ -7,16 +7,16 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'features/auth/presentation/pages/auth_screen.dart';
 import 'features/auth/presentation/providers/auth_providers.dart';
 import 'features/requests/presentation/pages/requests_map_page.dart';
-import 'core/services/supabase_service.dart';
+import 'core/providers/supabase_provider.dart';
 
-class App extends StatefulWidget {
+class App extends ConsumerStatefulWidget {
   const App({super.key});
 
   @override
-  State<App> createState() => _AppState();
+  ConsumerState<App> createState() => _AppState();
 }
 
-class _AppState extends State<App> {
+class _AppState extends ConsumerState<App> {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   StreamSubscription<AuthState>? _authSubscription;
   bool _recoveryPageVisible = false;
@@ -24,7 +24,7 @@ class _AppState extends State<App> {
   @override
   void initState() {
     super.initState();
-    _authSubscription = SupabaseService.client.auth.onAuthStateChange.listen(
+    _authSubscription = ref.read(supabaseClientProvider).auth.onAuthStateChange.listen(
       (data) {
         if (data.event == AuthChangeEvent.passwordRecovery) {
           _openRecoveryPage();

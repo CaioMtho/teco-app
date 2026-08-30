@@ -1,12 +1,15 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../../core/services/supabase_service.dart';
 import '../../domain/entities/auth_sign_up_payload.dart';
 import '../../domain/entities/auth_user.dart' as auth_entity;
 
 class AuthRemoteDataSource {
+  final SupabaseClient supabaseClient;
+
+  AuthRemoteDataSource({required this.supabaseClient});
+
   Stream<auth_entity.AuthUser?> authStateChanges() {
-    return SupabaseService.client.auth.onAuthStateChange.map((authState) {
+    return supabaseClient.auth.onAuthStateChange.map((authState) {
       final user = authState.session?.user;
       if (user == null) {
         return null;
@@ -20,7 +23,7 @@ class AuthRemoteDataSource {
   }
 
   auth_entity.AuthUser? get currentAuthUser {
-    final user = SupabaseService.client.auth.currentUser;
+    final user = supabaseClient.auth.currentUser;
     if (user == null) {
       return null;
     }
@@ -35,7 +38,7 @@ class AuthRemoteDataSource {
     required String email,
     required String redirectTo,
   }) async {
-    await SupabaseService.client.auth.resetPasswordForEmail(
+    await supabaseClient.auth.resetPasswordForEmail(
       email,
       redirectTo: redirectTo,
     );
@@ -44,7 +47,7 @@ class AuthRemoteDataSource {
   Future<void> updatePassword({
     required String password,
   }) async {
-    await SupabaseService.client.auth.updateUser(
+    await supabaseClient.auth.updateUser(
       UserAttributes(password: password),
     );
   }
@@ -53,14 +56,14 @@ class AuthRemoteDataSource {
     required String email,
     required String password,
   }) async {
-    await SupabaseService.client.auth.signInWithPassword(
+    await supabaseClient.auth.signInWithPassword(
       email: email,
       password: password,
     );
   }
 
   Future<void> signUpWithPassword(AuthSignUpPayload payload) async {
-    await SupabaseService.client.auth.signUp(
+    await supabaseClient.auth.signUp(
       email: payload.email,
       password: payload.password,
       data: {
@@ -76,6 +79,6 @@ class AuthRemoteDataSource {
   }
 
   Future<void> signOut() async {
-    await SupabaseService.client.auth.signOut();
+    await supabaseClient.auth.signOut();
   }
 }

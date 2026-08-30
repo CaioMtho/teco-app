@@ -1,69 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:geocoding/geocoding.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:latlong2/latlong.dart';
 
 import '../../domain/entities/profile_entity.dart';
 import '../../domain/exceptions/profile_exceptions.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
-import '../providers/profile_providers.dart';
+import '../providers/profile_notifier.dart';
+import '../widgets/edit_profile_sheet.dart';
+import '../widgets/password_change_sheet.dart';
 
-class ProfilePage extends ConsumerStatefulWidget {
+class ProfilePage extends ConsumerWidget {
   const ProfilePage({super.key});
 
-  @override
-  ConsumerState<ProfilePage> createState() => _ProfilePageState();
-}
-
-class _ProfilePageState extends ConsumerState<ProfilePage> {
-  ProfileEntity? _profile;
-  bool _isLoading = true;
-  bool _isSaving = false;
-  String? _errorMessage;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadProfile();
-  }
-
-  Future<void> _loadProfile() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final profile = await ref
-          .read(getCurrentUserProfileUseCaseProvider)
-          .call();
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _profile = profile;
-      });
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _errorMessage = _profileLoadErrorMessage(error);
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _logout() async {
+  Future<void> _logout(BuildContext context, WidgetRef ref) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -84,127 +32,71 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     );
 
     if (confirmed != true) return;
-
+    
     await ref.read(authControllerProvider.notifier).signOut();
-
-    if (!mounted) {
-      return;
-    }
-
+    if (!context.mounted) return;
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
-  Future<void> _openEditSheet() async {
-    final profile = _profile;
-    if (profile == null) {
-      return;
-    }
-
-    final payload = await showModalBottomSheet<_ProfileEditPayload>(
+  Future<void> _openEditSheet(BuildContext context, WidgetRef ref, ProfileEntity profile) async {
+    final payload = await showModalBottomSheet<ProfileEditPayload>(
       context: context,
       backgroundColor: const Color(0xFF222431),
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (context) => _EditProfileSheet(profile: profile),
+      builder: (context) => EditProfileSheet(profile: profile),
     );
 
-    if (payload == null) {
-      return;
-    }
-
-    setState(() {
-      _isSaving = true;
-    });
-
+    if (payload == null) return;
+    
     try {
-      final updatedProfile = await ref
-          .read(updateCurrentUserProfileUseCaseProvider)
-          .call(
-            fullName: payload.fullName,
-            cpfCnpj: payload.cpfCnpj,
-            location: payload.location,
-          );
-
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _profile = updatedProfile;
-      });
-
+      await ref.read(profileNotifierProvider.notifier).updateProfile(
+        fullName: payload.fullName,
+        cpfCnpj: payload.cpfCnpj,
+        location: payload.location,
+      );
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Perfil atualizado com sucesso.')),
       );
     } catch (_) {
-      if (!mounted) {
-        return;
-      }
-
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Não foi possível atualizar o perfil.')),
       );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSaving = false;
-        });
-      }
     }
   }
 
-  Future<void> _openPasswordSheet() async {
-    final payload = await showModalBottomSheet<_PasswordChangePayload>(
+  Future<void> _openPasswordSheet(BuildContext context, WidgetRef ref) async {
+    final payload = await showModalBottomSheet<PasswordChangePayload>(
       context: context,
       backgroundColor: const Color(0xFF222431),
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (context) => const _PasswordChangeSheet(),
+      builder: (context) => const PasswordChangeSheet(),
     );
 
-    if (payload == null) {
-      return;
-    }
-
-    setState(() {
-      _isSaving = true;
-    });
+    if (payload == null) return;
 
     try {
-      await ref
-          .read(authControllerProvider.notifier)
-          .updatePassword(password: payload.password);
-
-      if (!mounted) {
-        return;
-      }
-
+      await ref.read(authControllerProvider.notifier).updatePassword(password: payload.password);
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Senha atualizada com sucesso.')),
       );
     } catch (_) {
-      if (!mounted) {
-        return;
-      }
-
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Não foi possível atualizar a senha.')),
       );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSaving = false;
-        });
-      }
     }
   }
 
   @override
-  Widget build(BuildContext context) {
-    final profile = _profile;
-    final email = ref.watch(authControllerProvider).valueOrNull?.user?.email;
-    final accountLabel = email ?? 'Sessão não autenticada';
-
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profileAsync = ref.watch(profileNotifierProvider);
+    final isSaving = profileAsync.isLoading && profileAsync.hasValue;
+    
     return Scaffold(
       backgroundColor: const Color(0xFF0F1115),
       body: Stack(
@@ -219,107 +111,89 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             ),
           ),
           SafeArea(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : RefreshIndicator(
-                    onRefresh: _loadProfile,
-                    child: SingleChildScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          minHeight: MediaQuery.of(context).size.height - 88,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _ProfileHeader(
-                              onBack: () => Navigator.of(context).pop(),
-                              onEdit: _openEditSheet,
-                            ),
-                            const SizedBox(height: 20),
-                            if (_errorMessage != null)
-                              _ProfileErrorCard(
-                                message: _errorMessage!,
-                                onRetry: _loadProfile,
-                              )
-                            else if (profile != null) ...[
-                              _ProfileHero(
-                                profile: profile,
-                                email: accountLabel,
+            child: profileAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, stack) => _ProfileErrorCard(
+                message: _profileLoadErrorMessage(error),
+                onRetry: () => ref.invalidate(profileNotifierProvider),
+              ),
+              data: (profile) {
+                final email = ref.watch(authControllerProvider).valueOrNull?.user?.email;
+                final accountLabel = email ?? 'Sessão não autenticada';
+                
+                return RefreshIndicator(
+                  onRefresh: () async {
+                    ref.invalidate(profileNotifierProvider);
+                    try {
+                      await ref.read(profileNotifierProvider.future);
+                    } catch (_) {}
+                  },
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: MediaQuery.of(context).size.height - 88,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _ProfileHeader(
+                            onBack: () => Navigator.of(context).pop(),
+                            onEdit: () => _openEditSheet(context, ref, profile),
+                          ),
+                          const SizedBox(height: 20),
+                          _ProfileHero(profile: profile, email: accountLabel),
+                          const SizedBox(height: 20),
+                          _ProfileSectionCard(
+                            title: 'Informações da conta',
+                            subtitle: 'O que aparece aqui vem do seu registro em profiles.',
+                            children: [
+                              _ProfileInfoRow(label: 'Nome completo', value: profile.fullName),
+                              _ProfileInfoRow(label: 'E-mail', value: accountLabel),
+                              _ProfileInfoRow(label: 'CPF/CNPJ', value: _formatCpfCnpjForDisplay(profile.cpfCnpj)),
+                              _ProfileInfoRow(label: 'Tipo', value: _formatLabel(profile.type)),
+                              _ProfileInfoRow(
+                                label: 'Verificação',
+                                value: profile.isVerified == true ? 'Verificado' : 'Não verificado',
                               ),
-                              const SizedBox(height: 20),
-                              _ProfileSectionCard(
-                                title: 'Informações da conta',
-                                subtitle:
-                                    'O que aparece aqui vem do seu registro em profiles.',
-                                children: [
-                                  _ProfileInfoRow(
-                                    label: 'Nome completo',
-                                    value: profile.fullName,
-                                  ),
-                                  _ProfileInfoRow(
-                                    label: 'E-mail',
-                                    value: accountLabel,
-                                  ),
-                                  _ProfileInfoRow(
-                                    label: 'CPF/CNPJ',
-                                    value: _formatCpfCnpjForDisplay(
-                                      profile.cpfCnpj,
-                                    ),
-                                  ),
-                                  _ProfileInfoRow(
-                                    label: 'Tipo',
-                                    value: _formatLabel(profile.type),
-                                  ),
-                                  _ProfileInfoRow(
-                                    label: 'Verificação',
-                                    value: profile.isVerified == true
-                                        ? 'Verificado'
-                                        : 'Não verificado',
-                                  ),
-                                  _ProfileInfoRow(
-                                    label: 'Localização',
-                                    value:
-                                        profile.locationLabel ??
-                                        'Não informada',
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 20),
-                              FilledButton.icon(
-                                onPressed: _isSaving ? null : _openEditSheet,
-                                icon: const Icon(Icons.edit_rounded),
-                                label: const Text('Editar informações'),
-                              ),
-                              const SizedBox(height: 12),
-                              OutlinedButton.icon(
-                                onPressed: _isSaving
-                                    ? null
-                                    : _openPasswordSheet,
-                                icon: const Icon(Icons.lock_reset_rounded),
-                                label: const Text('Trocar senha'),
-                              ),
-                              const SizedBox(height: 22),
-                              OutlinedButton.icon(
-                                onPressed: _logout,
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.redAccent,
-                                  side: const BorderSide(
-                                    color: Colors.redAccent,
-                                  ),
-                                ),
-                                icon: const Icon(Icons.logout_rounded),
-                                label: const Text('Sair da conta'),
+                              _ProfileInfoRow(
+                                label: 'Localização',
+                                value: profile.locationLabel ?? 'Não informada',
                               ),
                             ],
-                          ],
-                        ),
+                          ),
+                          const SizedBox(height: 20),
+                          FilledButton.icon(
+                            onPressed: isSaving ? null : () => _openEditSheet(context, ref, profile),
+                            icon: const Icon(Icons.edit_rounded),
+                            label: const Text('Editar informações'),
+                          ),
+                          const SizedBox(height: 12),
+                          OutlinedButton.icon(
+                            onPressed: isSaving ? null : () => _openPasswordSheet(context, ref),
+                            icon: const Icon(Icons.lock_reset_rounded),
+                            label: const Text('Trocar senha'),
+                          ),
+                          const SizedBox(height: 22),
+                          OutlinedButton.icon(
+                            onPressed: () => _logout(context, ref),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.redAccent,
+                              side: const BorderSide(color: Colors.redAccent),
+                            ),
+                            icon: const Icon(Icons.logout_rounded),
+                            label: const Text('Sair da conta'),
+                          ),
+                        ],
                       ),
                     ),
                   ),
+                );
+              },
+            ),
           ),
-          if (_isSaving)
+          if (isSaving)
             const Positioned.fill(
               child: ColoredBox(
                 color: Color(0x33000000),
@@ -583,9 +457,9 @@ class _ProfileAvatar extends StatelessWidget {
       width: 148,
       height: 148,
       padding: const EdgeInsets.all(5),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         shape: BoxShape.circle,
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           colors: [Color(0xFF7B61FF), Color(0xFF145CFF)],
         ),
       ),
@@ -678,807 +552,6 @@ class _ProfileErrorCard extends StatelessWidget {
   }
 }
 
-class _PasswordChangePayload {
-  const _PasswordChangePayload({required this.password});
-
-  final String password;
-}
-
-class _PasswordChangeSheet extends StatefulWidget {
-  const _PasswordChangeSheet();
-
-  @override
-  State<_PasswordChangeSheet> createState() => _PasswordChangeSheetState();
-}
-
-class _PasswordChangeSheetState extends State<_PasswordChangeSheet> {
-  final _formKey = GlobalKey<FormState>();
-  final _passwordCtrl = TextEditingController();
-  final _confirmCtrl = TextEditingController();
-  bool _obscure = true;
-  bool _obscureConfirm = true;
-
-  @override
-  void dispose() {
-    _passwordCtrl.dispose();
-    _confirmCtrl.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    if (!_formKey.currentState!.validate()) return;
-
-    Navigator.of(
-      context,
-    ).pop(_PasswordChangePayload(password: _passwordCtrl.text));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(20, 8, 20, 20 + bottomInset),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Trocar senha',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _passwordCtrl,
-              obscureText: _obscure,
-              style: const TextStyle(color: Colors.white),
-              decoration: _profileInputDecoration('Nova senha').copyWith(
-                suffixIcon: IconButton(
-                  onPressed: () => setState(() => _obscure = !_obscure),
-                  icon: Icon(
-                    _obscure ? Icons.visibility_off : Icons.visibility,
-                    color: Colors.white70,
-                  ),
-                ),
-              ),
-              validator: _validatePassword,
-            ),
-            const SizedBox(height: 14),
-            TextFormField(
-              controller: _confirmCtrl,
-              obscureText: _obscureConfirm,
-              style: const TextStyle(color: Colors.white),
-              decoration: _profileInputDecoration('Confirmar senha').copyWith(
-                suffixIcon: IconButton(
-                  onPressed: () =>
-                      setState(() => _obscureConfirm = !_obscureConfirm),
-                  icon: Icon(
-                    _obscureConfirm ? Icons.visibility_off : Icons.visibility,
-                    color: Colors.white70,
-                  ),
-                ),
-              ),
-              validator: (value) {
-                if (value == null || value.isEmpty) return 'Confirme senha';
-                if (value != _passwordCtrl.text) return 'Senhas não coincidem';
-                return null;
-              },
-            ),
-            const SizedBox(height: 18),
-            FilledButton(onPressed: _submit, child: const Text('Salvar senha')),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-InputDecoration _profileInputDecoration(String label) {
-  return InputDecoration(
-    labelText: label,
-    labelStyle: const TextStyle(color: Colors.white70),
-    filled: true,
-    fillColor: const Color(0xFF1E1E1E),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-    border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: const BorderSide(color: Color(0xFF2A2A2A)),
-    ),
-    enabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: const BorderSide(color: Color(0xFF2A2A2A)),
-    ),
-    focusedBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: BorderSide(
-        color: ThemeData.light().colorScheme.primary,
-        width: 1.5,
-      ),
-    ),
-  );
-}
-
-String? _validatePassword(String? v) {
-  if (v == null || v.isEmpty) return 'Informe uma senha';
-  if (v.length < 8) return 'Mínimo 8 caracteres';
-  if (!RegExp(r'[A-Z]').hasMatch(v)) {
-    return 'Inclua ao menos uma letra maiúscula';
-  }
-  if (!RegExp(r'[0-9]').hasMatch(v)) return 'Inclua ao menos um número';
-  return null;
-}
-
-class _EditProfileSheet extends StatefulWidget {
-  const _EditProfileSheet({required this.profile});
-
-  final ProfileEntity profile;
-
-  @override
-  State<_EditProfileSheet> createState() => _EditProfileSheetState();
-}
-
-class _EditProfileSheetState extends State<_EditProfileSheet> {
-  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-  late final TextEditingController _fullNameController;
-  late final TextEditingController _cpfCnpjController;
-  late final TextEditingController _addressController;
-  late LatLng? _location;
-  String? _resolvedAddress;
-
-  bool _fetchingLocation = false;
-  bool _manualMode = false;
-  bool _geocoding = false;
-  List<Location> _geocodingResults = const [];
-  List<Placemark> _placemarks = const [];
-
-  @override
-  void initState() {
-    super.initState();
-    _fullNameController = TextEditingController(text: widget.profile.fullName);
-    _cpfCnpjController = TextEditingController(
-      text: _formatCpfCnpjForInput(widget.profile.cpfCnpj),
-    );
-    _addressController = TextEditingController();
-    _location = widget.profile.location;
-    _resolvedAddress = widget.profile.locationLabel;
-  }
-
-  @override
-  void dispose() {
-    _fullNameController.dispose();
-    _cpfCnpjController.dispose();
-    _addressController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _fetchAutoLocation() async {
-    setState(() {
-      _fetchingLocation = true;
-      _geocodingResults = const [];
-      _placemarks = const [];
-    });
-
-    try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        _showError('Serviço de localização desativado.');
-        return;
-      }
-
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-
-      if (permission == LocationPermission.denied) {
-        _showError('Permissão de localização negada.');
-        return;
-      }
-
-      if (permission == LocationPermission.deniedForever) {
-        _showError('Permissão de localização negada permanentemente.');
-        return;
-      }
-
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-        ),
-      );
-      final currentLocation = LatLng(position.latitude, position.longitude);
-      final placemarks = await placemarkFromCoordinates(
-        position.latitude,
-        position.longitude,
-      );
-      final p = placemarks.isNotEmpty ? placemarks.first : null;
-      final address = p != null
-          ? _formatPlacemark(p)
-          : '${position.latitude.toStringAsFixed(4)}, '
-                '${position.longitude.toStringAsFixed(4)}';
-
-      setState(() {
-        _location = currentLocation;
-        _resolvedAddress = address;
-      });
-    } catch (_) {
-      _showError('Não foi possível obter localização.');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _fetchingLocation = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _searchAddress() async {
-    final query = _addressController.text.trim();
-    if (query.isEmpty) {
-      _showError('Digite um endereço para buscar.');
-      return;
-    }
-
-    FocusScope.of(context).unfocus();
-    setState(() {
-      _geocoding = true;
-      _geocodingResults = const [];
-      _placemarks = const [];
-      _location = null;
-      _resolvedAddress = null;
-    });
-
-    try {
-      final locations = await locationFromAddress(query);
-      if (locations.isEmpty) {
-        if (!mounted) return;
-        _showError('Nenhum resultado encontrado para esse endereço.');
-        return;
-      }
-
-      final limited = locations.take(3).toList();
-      final placemarks = await Future.wait(
-        limited.map(
-          (loc) => placemarkFromCoordinates(
-            loc.latitude,
-            loc.longitude,
-          ).then((list) => list.isNotEmpty ? list.first : Placemark()),
-        ),
-      );
-
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _geocoding = false;
-        _geocodingResults = limited;
-        _placemarks = placemarks;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _geocoding = false;
-      });
-      _showError('Erro ao buscar endereço. Tente novamente.');
-    }
-  }
-
-  void _selectGeocodingResult(int index) {
-    final selected = _geocodingResults[index];
-    final placemark = _placemarks[index];
-    setState(() {
-      _location = LatLng(selected.latitude, selected.longitude);
-      _resolvedAddress = _formatPlacemark(placemark);
-      _geocodingResults = const [];
-      _placemarks = const [];
-    });
-  }
-
-  void _clearSelectedLocation() {
-    setState(() {
-      _location = null;
-      _resolvedAddress = null;
-      _addressController.clear();
-      _geocodingResults = const [];
-    });
-  }
-
-  void _showError(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  String _formatPlacemark(Placemark p) {
-    final parts = [
-      if (p.street != null && p.street!.isNotEmpty) p.street,
-      if (p.subLocality != null && p.subLocality!.isNotEmpty) p.subLocality,
-      if (p.locality != null && p.locality!.isNotEmpty) p.locality,
-      if (p.administrativeArea != null && p.administrativeArea!.isNotEmpty)
-        p.administrativeArea,
-    ];
-    return parts.join(', ');
-  }
-
-  void _submit() {
-    if (!(_formKey.currentState?.validate() ?? false)) {
-      return;
-    }
-
-    if (_location == null) {
-      _showError('Informe uma localização antes de salvar.');
-      return;
-    }
-
-    Navigator.of(context).pop(
-      _ProfileEditPayload(
-        fullName: _fullNameController.text.trim(),
-        cpfCnpj: _normalizeCpfCnpj(_cpfCnpjController.text),
-        location: _location,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    final colorScheme = Theme.of(context).colorScheme;
-
-    const inputTextColor = Colors.white;
-    const inputLabelColor = Colors.white70;
-    const inputHintColor = Colors.white54;
-
-    final enabledBorder = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: const BorderSide(color: Colors.white38),
-    );
-    final focusedBorder = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: BorderSide(color: colorScheme.primary, width: 1.6),
-    );
-
-    InputDecoration decoration({required String label, String? hint}) {
-      return InputDecoration(
-        labelText: label,
-        hintText: hint,
-        filled: true,
-        fillColor: const Color(0xFF2A2D3B),
-        border: enabledBorder,
-        enabledBorder: enabledBorder,
-        focusedBorder: focusedBorder,
-        labelStyle: const TextStyle(color: inputLabelColor),
-        hintStyle: const TextStyle(color: inputHintColor),
-      );
-    }
-
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 16),
-        child: SingleChildScrollView(
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Editar perfil',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Ajuste nome, CPF/CNPJ e localização.',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: Colors.white70),
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _fullNameController,
-                  style: const TextStyle(color: inputTextColor),
-                  cursorColor: colorScheme.primary,
-                  decoration: decoration(label: 'Nome completo'),
-                  textInputAction: TextInputAction.next,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Informe seu nome completo';
-                    }
-                    if (value.trim().length < 3) {
-                      return 'Nome muito curto';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _cpfCnpjController,
-                  style: const TextStyle(color: inputTextColor),
-                  cursorColor: colorScheme.primary,
-                  decoration: decoration(label: 'CPF/CNPJ', hint: 'Opcional'),
-                  keyboardType: TextInputType.text,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9./\- ]')),
-                  ],
-                  validator: (value) => _validateCpfCnpj(value),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'Use CPF com 11 dígitos ou CNPJ com 14 dígitos.',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: Colors.white60),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Localização',
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF2A2D3B),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white24),
-                  ),
-                  child: Row(
-                    children: [
-                      _ProfileLocationModeTab(
-                        label: 'Automática',
-                        icon: Icons.my_location,
-                        selected: !_manualMode,
-                        onTap: () {
-                          setState(() {
-                            _manualMode = false;
-                            _geocodingResults = const [];
-                          });
-                        },
-                      ),
-                      _ProfileLocationModeTab(
-                        label: 'Por endereço',
-                        icon: Icons.search,
-                        selected: _manualMode,
-                        onTap: () {
-                          setState(() {
-                            _manualMode = true;
-                            _geocodingResults = const [];
-                          });
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 10),
-                if (!_manualMode)
-                  _ProfileLocationStatusCard(
-                    location: _location,
-                    address: _resolvedAddress,
-                    loading: _fetchingLocation,
-                    onTap: _fetchAutoLocation,
-                    idleLabel: 'Usar minha localização atual',
-                    idleIcon: Icons.location_off_outlined,
-                  )
-                else ...[
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _addressController,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          decoration: decoration(
-                            label: 'Buscar endereço',
-                            hint: 'Rua, bairro, cidade...',
-                          ),
-                          onFieldSubmitted: (_) => _searchAddress(),
-                          textInputAction: TextInputAction.search,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      SizedBox(
-                        height: 48,
-                        width: 48,
-                        child: ElevatedButton(
-                          onPressed: _geocoding ? null : _searchAddress,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: colorScheme.primary,
-                            foregroundColor: colorScheme.onPrimary,
-                            disabledBackgroundColor: colorScheme.primary
-                                .withValues(alpha: 0.4),
-                            elevation: 0,
-                            padding: EdgeInsets.zero,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: _geocoding
-                              ? SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: colorScheme.onPrimary,
-                                  ),
-                                )
-                              : const Icon(Icons.search, size: 20),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (_geocodingResults.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF2A2D3B),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white24),
-                      ),
-                      child: Column(
-                        children: List.generate(_geocodingResults.length, (i) {
-                          final label = _formatPlacemark(_placemarks[i]);
-                          final isLast = i == _geocodingResults.length - 1;
-                          return InkWell(
-                            onTap: () => _selectGeocodingResult(i),
-                            borderRadius: BorderRadius.circular(12),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 12,
-                              ),
-                              decoration: BoxDecoration(
-                                border: isLast
-                                    ? null
-                                    : const Border(
-                                        bottom: BorderSide(
-                                          color: Colors.white12,
-                                          width: 1,
-                                        ),
-                                      ),
-                              ),
-                              child: Row(
-                                children: [
-                                  const Icon(
-                                    Icons.location_on_outlined,
-                                    size: 16,
-                                    color: Colors.white60,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      label,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                                  const Icon(
-                                    Icons.chevron_right,
-                                    size: 16,
-                                    color: Colors.white60,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }),
-                      ),
-                    ),
-                  ],
-                  if (_location != null && _geocodingResults.isEmpty) ...[
-                    const SizedBox(height: 10),
-                    _ProfileLocationStatusCard(
-                      location: _location,
-                      address: _resolvedAddress,
-                      loading: false,
-                      onTap: _clearSelectedLocation,
-                      idleLabel: '',
-                      idleIcon: Icons.location_off_outlined,
-                      isConfirmed: true,
-                    ),
-                  ],
-                ],
-                const SizedBox(height: 18),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          side: const BorderSide(color: Colors.white30),
-                        ),
-                        child: const Text('Cancelar'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: _submit,
-                        child: const Text('Salvar'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ProfileLocationStatusCard extends StatelessWidget {
-  const _ProfileLocationStatusCard({
-    required this.location,
-    required this.address,
-    required this.loading,
-    required this.onTap,
-    required this.idleLabel,
-    required this.idleIcon,
-    this.isConfirmed = false,
-  });
-
-  final LatLng? location;
-  final String? address;
-  final bool loading;
-  final VoidCallback onTap;
-  final String idleLabel;
-  final IconData idleIcon;
-  final bool isConfirmed;
-
-  @override
-  Widget build(BuildContext context) {
-    final hasLocation = location != null;
-
-    return GestureDetector(
-      onTap: loading ? null : onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: hasLocation
-              ? const Color(0x1222C55E)
-              : const Color(0xFF2A2D3B),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: hasLocation ? const Color(0xFF22C55E) : Colors.white24,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              hasLocation ? Icons.location_on : idleIcon,
-              size: 18,
-              color: hasLocation ? const Color(0xFF22C55E) : Colors.white60,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: loading
-                  ? const Text(
-                      'Obtendo localização...',
-                      style: TextStyle(color: Colors.white60, fontSize: 14),
-                    )
-                  : Text(
-                      hasLocation
-                          ? (address ?? 'Localização confirmada')
-                          : idleLabel,
-                      style: TextStyle(
-                        color: hasLocation
-                            ? const Color(0xFF22C55E)
-                            : Colors.white60,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-            ),
-            const SizedBox(width: 8),
-            if (loading)
-              const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white60,
-                ),
-              )
-            else
-              Icon(
-                isConfirmed ? Icons.close : Icons.chevron_right,
-                color: hasLocation ? const Color(0xFF22C55E) : Colors.white60,
-                size: 18,
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ProfileLocationModeTab extends StatelessWidget {
-  const _ProfileLocationModeTab({
-    required this.label,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: selected
-                ? colorScheme.primary.withValues(alpha: 0.25)
-                : null,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 16,
-                color: selected ? Colors.white : Colors.white60,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  color: selected ? Colors.white : Colors.white70,
-                  fontSize: 12,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ProfileEditPayload {
-  const _ProfileEditPayload({
-    required this.fullName,
-    required this.cpfCnpj,
-    required this.location,
-  });
-
-  final String fullName;
-  final String? cpfCnpj;
-  final LatLng? location;
-}
-
 String _initialsFromName(String fullName) {
   final parts = fullName
       .trim()
@@ -1521,15 +594,6 @@ String _formatCpfCnpjForDisplay(String? value) {
   return _formatCpfCnpjDigits(digits);
 }
 
-String _formatCpfCnpjForInput(String? value) {
-  final digits = _onlyDigits(value);
-  if (digits.isEmpty) {
-    return '';
-  }
-
-  return _formatCpfCnpjDigits(digits);
-}
-
 String _formatCpfCnpjDigits(String digits) {
   if (digits.length <= 11) {
     final buffer = StringBuffer();
@@ -1561,44 +625,10 @@ String _formatCpfCnpjDigits(String digits) {
   return buffer.toString();
 }
 
-String? _validateCpfCnpj(String? value) {
-  final digits = _onlyDigits(value);
-  if (digits.isEmpty) {
-    return null;
-  }
-
-  if (digits.length != 11 && digits.length != 14) {
-    return 'CPF deve ter 11 dígitos ou CNPJ 14 dígitos';
-  }
-
-  if (_allDigitsEqual(digits)) {
-    return 'Documento inválido';
-  }
-
-  return null;
-}
-
-String? _normalizeCpfCnpj(String? value) {
-  final digits = _onlyDigits(value);
-  if (digits.isEmpty) {
-    return null;
-  }
-
-  return digits;
-}
-
 String _onlyDigits(String? value) {
   if (value == null) {
     return '';
   }
 
   return value.replaceAll(RegExp(r'\D'), '');
-}
-
-bool _allDigitsEqual(String digits) {
-  if (digits.isEmpty) {
-    return false;
-  }
-
-  return digits.split('').every((digit) => digit == digits[0]);
 }

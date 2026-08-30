@@ -46,23 +46,18 @@ class LocationGeocodingService {
       }
 
       final limited = locations.take(limit).toList(growable: false);
-      final suggestions = <AddressSuggestion>[];
 
-      for (final item in limited) {
+      final futures = limited.map((item) async {
         final currentLocation = LatLng(item.latitude, item.longitude);
         final label = await reverseGeocodeLabel(currentLocation);
-
-        suggestions.add(
-          AddressSuggestion(
-            location: currentLocation,
-            label: label ??
-                '${item.latitude.toStringAsFixed(4)}, '
-                    '${item.longitude.toStringAsFixed(4)}',
-          ),
+        return AddressSuggestion(
+          location: currentLocation,
+          label: label ??
+              '${item.latitude.toStringAsFixed(4)}, ${item.longitude.toStringAsFixed(4)}',
         );
-      }
+      });
 
-      return suggestions;
+      return await Future.wait(futures);
     } catch (_) {
       return const [];
     }

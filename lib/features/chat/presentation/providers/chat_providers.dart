@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/providers/supabase_provider.dart';
 import '../../data/datasources/chat_remote_datasource.dart';
 import '../../data/repositories/chats_repository_impl.dart';
 import '../../domain/repositories/chats_repository.dart';
@@ -9,7 +10,7 @@ import '../../domain/usecases/create_chat_with_message_usecase.dart';
 import '../../domain/entities/chat_entity.dart';
 
 final chatRemoteDataSourceProvider = Provider<ChatRemoteDataSource>((ref) {
-  return ChatRemoteDataSource();
+  return ChatRemoteDataSource(ref.read(supabaseClientProvider));
 });
 
 final chatsRepositoryProvider = Provider<ChatsRepository>((ref) {

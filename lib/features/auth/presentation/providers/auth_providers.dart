@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/providers/supabase_provider.dart';
 import '../../data/datasources/auth_remote_datasource.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../../domain/entities/app_auth_state.dart';
@@ -20,7 +21,7 @@ import '../../../profile/presentation/providers/profile_providers.dart';
 import '../../../profile/domain/exceptions/profile_exceptions.dart';
 
 final authRemoteDataSourceProvider = Provider<AuthRemoteDataSource>((ref) {
-  return AuthRemoteDataSource();
+  return AuthRemoteDataSource(supabaseClient: ref.read(supabaseClientProvider));
 });
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {

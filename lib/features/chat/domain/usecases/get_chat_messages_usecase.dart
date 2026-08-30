@@ -6,7 +6,7 @@ class GetChatMessagesUseCase {
 
   GetChatMessagesUseCase(this._repository);
 
-  Future<List<MessageEntity>> call(String chatId) {
-    return _repository.getChatMessages(chatId);
+  Future<List<MessageEntity>> call(String chatId, {int offset = 0, int limit = 50}) {
+    return _repository.getChatMessages(chatId, offset: offset, limit: limit);
   }
 }

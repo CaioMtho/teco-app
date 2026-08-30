@@ -19,26 +19,11 @@ class RequestsRepositoryImpl implements RequestsRepository {
   }) async {
     debugPrint('[RequestsRepository] Buscando requisições próximas: centro=(${ center.latitude},${center.longitude}), raio=${radiusKm}km');
     try {
-      final openRequests = await _remoteDataSource.getOpenRequests();
-      debugPrint('[RequestsRepository] ${openRequests.length} requisições abertas obtidas');
-
-      final nearby = openRequests.where((request) {
-        if (!request.location.latitude.isFinite ||
-            !request.location.longitude.isFinite) {
-          debugPrint(
-            '[RequestsRepository] Requisição ignorada por localização inválida: ${request.title}',
-          );
-          return false;
-        }
-
-        final requestDistance =
-            _distance.as(LengthUnit.Kilometer, center, request.location);
-        final isWithinRadius = requestDistance <= radiusKm;
-        if (!isWithinRadius) {
-          debugPrint('[RequestsRepository] Requisição fora do raio: ${request.title} (${requestDistance.toStringAsFixed(2)}km)');
-        }
-        return isWithinRadius;
-      }).toList(growable: false);
+      final nearby = await _remoteDataSource.getNearbyOpenRequests(
+        lat: center.latitude,
+        lon: center.longitude,
+        radiusMeters: radiusKm * 1000,
+      );
       
       debugPrint('[RequestsRepository] ${nearby.length} requisições dentro do raio de ${radiusKm}km');
       return nearby;
@@ -66,7 +51,7 @@ class RequestsRepositoryImpl implements RequestsRepository {
     required String requestId,
     required String title,
     String? description,
-    String? budgetRange,
+    double? budgetRange,
     required bool isRemote,
   }) async {
     debugPrint('[RequestsRepository] Atualizando requisição: $title');

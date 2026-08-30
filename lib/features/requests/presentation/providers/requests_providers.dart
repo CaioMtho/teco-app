@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/providers/supabase_provider.dart';
 import '../../data/datasources/requests_remote_datasource.dart';
 import '../../data/repositories/requests_repository_impl.dart';
 import '../../domain/repositories/requests_repository.dart';
@@ -11,7 +12,9 @@ import '../../domain/usecases/update_request_status_usecase.dart';
 import '../../domain/usecases/update_current_user_request_usecase.dart';
 
 final requestsRemoteDataSourceProvider = Provider<RequestsRemoteDataSource>((ref) {
-  return RequestsRemoteDataSource();
+  return RequestsRemoteDataSource(
+    supabaseClient: ref.read(supabaseClientProvider),
+  );
 });
 
 final requestsRepositoryProvider = Provider<RequestsRepository>((ref) {

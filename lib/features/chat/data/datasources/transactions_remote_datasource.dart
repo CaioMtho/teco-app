@@ -1,16 +1,20 @@
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../../core/services/supabase_service.dart';
 import '../../domain/entities/transaction_entity.dart';
 
 class TransactionsRemoteDataSource {
+  final SupabaseClient supabaseClient;
+
+  TransactionsRemoteDataSource(this.supabaseClient);
+
   Future<TransactionEntity> createTransaction({
     required String proposalId,
     required double amount,
   }) async {
     debugPrint('[TransactionsRemoteDataSource] Criando transação para proposal: $proposalId');
     try {
-      final response = await SupabaseService.client
+      final response = await supabaseClient
           .from('transactions')
           .insert({
             'proposal_id': proposalId,
@@ -30,7 +34,7 @@ class TransactionsRemoteDataSource {
   Future<TransactionEntity?> getTransactionByProposalId(String proposalId) async {
     debugPrint('[TransactionsRemoteDataSource] Buscando transação por proposal: $proposalId');
     try {
-      final response = await SupabaseService.client
+      final response = await supabaseClient
           .from('transactions')
           .select()
           .eq('proposal_id', proposalId)
@@ -55,7 +59,7 @@ class TransactionsRemoteDataSource {
   }) async {
     debugPrint('[TransactionsRemoteDataSource] Atualizando transação: id=$transactionId, status=$status');
     try {
-      final response = await SupabaseService.client
+      final response = await supabaseClient
           .from('transactions')
           .update({'status': status})
           .eq('id', transactionId)

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/providers/supabase_provider.dart';
 import '../../data/datasources/chat_messages_remote_datasource.dart';
 import '../../data/datasources/proposals_remote_datasource.dart';
 import '../../data/datasources/transactions_remote_datasource.dart';
@@ -27,15 +28,15 @@ import '../../../requests/presentation/providers/requests_providers.dart' hide u
 
 // Datasource Providers
 final chatMessagesRemoteDataSourceProvider = Provider<ChatMessagesRemoteDataSource>((ref) {
-  return ChatMessagesRemoteDataSource();
+  return ChatMessagesRemoteDataSource(ref.read(supabaseClientProvider));
 });
 
 final proposalsRemoteDataSourceProvider = Provider<ProposalsRemoteDataSource>((ref) {
-  return ProposalsRemoteDataSource();
+  return ProposalsRemoteDataSource(ref.read(supabaseClientProvider));
 });
 
 final transactionsRemoteDataSourceProvider = Provider<TransactionsRemoteDataSource>((ref) {
-  return TransactionsRemoteDataSource();
+  return TransactionsRemoteDataSource(ref.read(supabaseClientProvider));
 });
 
 // Repository Providers
@@ -96,11 +97,15 @@ class ChatDetailState {
   final AsyncValue<List<MessageEntity>> messages;
   final AsyncValue<List<ProposalEntity>> proposals;
   final AsyncValue<TransactionEntity?> paymentTransaction;
+  final bool hasMoreMessages;
+  final bool isLoadingMore;
 
   const ChatDetailState({
     required this.messages,
     required this.proposals,
     required this.paymentTransaction,
+    this.hasMoreMessages = true,
+    this.isLoadingMore = false,
   });
 
   ProposalEntity? get acceptedProposal {
@@ -117,11 +122,15 @@ class ChatDetailState {
     AsyncValue<List<MessageEntity>>? messages,
     AsyncValue<List<ProposalEntity>>? proposals,
     AsyncValue<TransactionEntity?>? paymentTransaction,
+    bool? hasMoreMessages,
+    bool? isLoadingMore,
   }) {
     return ChatDetailState(
       messages: messages ?? this.messages,
       proposals: proposals ?? this.proposals,
       paymentTransaction: paymentTransaction ?? this.paymentTransaction,
+      hasMoreMessages: hasMoreMessages ?? this.hasMoreMessages,
+      isLoadingMore: isLoadingMore ?? this.isLoadingMore,
     );
   }
 }
@@ -168,17 +177,22 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
   final List<MessageEntity> _pendingMessageUpdates = [];
   final List<ProposalEntity> _pendingProposalUpdates = [];
   final Set<String> _pendingRemovedProposalIds = <String>{};
+  
+  int _currentOffset = 0;
+  static const int _limit = 50;
 
   Future<void> load(String chatId, String requestId) async {
     debugPrint('[ChatDetailNotifier] Carregando chat $chatId e request $requestId');
     try {
+      _currentOffset = 0;
       state = state.copyWith(
         messages: const AsyncValue.loading(),
         proposals: const AsyncValue.loading(),
         paymentTransaction: const AsyncValue.data(null),
       );
 
-      final messages = await _getChatMessages.call(chatId);
+      final messages = await _getChatMessages.call(chatId, offset: _currentOffset, limit: _limit);
+      final hasMore = messages.length == _limit;
       final proposals = await _getProposalsByRequest.call(requestId);
         final paymentProposal = _findPaymentProposal(proposals);
         final paymentTransaction = paymentProposal == null
@@ -194,6 +208,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
           ),
         ),
         paymentTransaction: AsyncValue.data(paymentTransaction),
+        hasMoreMessages: hasMore,
       );
       _pendingMessageUpdates.clear();
       _pendingProposalUpdates.clear();
@@ -207,6 +222,31 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
         proposals: AsyncValue.error(e, st),
         paymentTransaction: AsyncValue.error(e, st),
       );
+    }
+  }
+
+  Future<void> loadMoreMessages(String chatId) async {
+    if (state.isLoadingMore || !state.hasMoreMessages) return;
+
+    state = state.copyWith(isLoadingMore: true);
+    
+    try {
+      _currentOffset += _limit;
+      final newMessages = await _getChatMessages.call(chatId, offset: _currentOffset, limit: _limit);
+      final hasMore = newMessages.length == _limit;
+      
+      final currentMessages = state.messages.valueOrNull ?? [];
+      final merged = _mergeAndSortMessages(currentMessages, newMessages);
+
+      state = state.copyWith(
+        messages: AsyncValue.data(merged),
+        hasMoreMessages: hasMore,
+        isLoadingMore: false,
+      );
+    } catch (e, st) {
+      debugPrint('[ChatDetailNotifier] Erro ao carregar mais mensagens: $e\nStackTrace: $st');
+      state = state.copyWith(isLoadingMore: false);
+      _currentOffset -= _limit; // rollback offset
     }
   }
 

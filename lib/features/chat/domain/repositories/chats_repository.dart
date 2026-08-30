@@ -15,7 +15,7 @@ abstract class ChatsRepository {
 }
 
 abstract class ChatMessagesRepository {
-  Future<List<MessageEntity>> getChatMessages(String chatId);
+  Future<List<MessageEntity>> getChatMessages(String chatId, {int offset = 0, int limit = 50});
   Future<MessageEntity> sendMessage(String chatId, String content);
   Stream<MessageEntity> listenToChatMessages(String chatId);
 }

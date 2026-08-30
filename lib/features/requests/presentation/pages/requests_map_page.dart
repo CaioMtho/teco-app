@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../domain/entities/request_entity.dart';
-import '../providers/requests_providers.dart';
 import '../../../profile/presentation/pages/profile_page.dart';
 import '../../../chat/presentation/widgets/chat_list_panel.dart';
 import '../../../chat/presentation/widgets/initial_chat_message_modal.dart';
 import '../../../chat/presentation/providers/chat_providers.dart';
+import '../providers/requests_map_provider.dart';
+import '../widgets/requests_map_bottom_sheets.dart';
 
 class RequestsMapPage extends ConsumerStatefulWidget {
   const RequestsMapPage({super.key});
@@ -22,26 +22,18 @@ class RequestsMapPage extends ConsumerStatefulWidget {
 
 class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
   static const LatLng _defaultMapCenter = LatLng(-23.55052, -46.633308);
-
   final MapController _mapController = MapController();
 
-  LatLng _mainLocation = _defaultMapCenter;
-  List<RequestEntity> _openRequests = const [];
-  List<RequestEntity> _currentUserOpenRequests = const [];
   RequestEntity? _selectedRequest;
   bool _isMyRequestsPanelOpen = false;
-  bool _isLoading = true;
-  bool _isLoadingMyRequests = false;
   bool _isMapReady = false;
   bool _hasCenteredMap = false;
-  bool _hasResolvedMainLocation = false;
-  String? _errorMessage;
+  bool _isLoadingMyRequests = false;
 
   @override
   void initState() {
     super.initState();
     debugPrint('[RequestsMapPage] initState chamado');
-    _loadMapData();
   }
 
   void _onRequestMarkerTap(RequestEntity request) {
@@ -72,11 +64,7 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
 
   Future<void> _onCreateChat() async {
     if (_selectedRequest == null) return;
-
     final request = _selectedRequest!;
-    debugPrint(
-      '[RequestsMapPage] Abrindo modal para criar chat para request: ${request.id}',
-    );
 
     final authState = ref.read(authControllerProvider).valueOrNull;
     final profile = authState?.profile;
@@ -90,21 +78,17 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
       return;
     }
 
-    // Verificar se é provider
     if (profile.type != 'provider') {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            'Somente prestadores de serviço podem iniciar chats com clientes',
-          ),
+          content: Text('Somente prestadores de serviço podem iniciar chats com clientes'),
           duration: Duration(seconds: 3),
         ),
       );
       return;
     }
 
-    // Validar campos obrigatórios do request
     final requesterId = request.requesterId;
     if (requesterId == null) {
       if (!mounted) return;
@@ -114,7 +98,6 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
       return;
     }
 
-    // Abrir modal para mensagem inicial
     final messageContent = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: const Color(0xFF222431),
@@ -123,40 +106,30 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
       builder: (context) => const InitialChatMessageModal(),
     );
 
-    if (messageContent == null || messageContent.isEmpty) {
-      debugPrint('[RequestsMapPage] Criação de chat cancelada');
-      return;
-    }
+    if (messageContent == null || messageContent.isEmpty) return;
 
-    debugPrint('[RequestsMapPage] Criando chat com mensagem inicial');
     try {
-      await ref
-          .read(createChatWithMessageUseCaseProvider)
-          .call(
+      await ref.read(createChatWithMessageUseCaseProvider).call(
             requestId: request.id,
             requestTitle: request.title,
             requesterId: requesterId,
             providerId: currentUserId,
             participantId: requesterId,
-            participantName: '', // será preenchido pelo backend
+            participantName: '',
             messageContent: messageContent,
           );
-
       if (!mounted) return;
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Chat criado com sucesso!')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Chat criado com sucesso!')),
+      );
 
-      // Fechar modal de request
       setState(() {
         _selectedRequest = null;
       });
 
-      // Recarregar chats
       ref.read(chatListNotifierProvider.notifier).load();
     } catch (e) {
-      debugPrint('[RequestsMapPage] Erro ao criar chat: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Não foi possível criar o chat')),
@@ -164,78 +137,22 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
     }
   }
 
-  Future<void> _refreshMyOpenRequests({bool withLoadingState = false}) async {
-    debugPrint('[RequestsMapPage] Atualizando requisiç\u00f5es do usuário');
-    if (withLoadingState) {
-      setState(() {
-        _isLoadingMyRequests = true;
-      });
-    }
-
-    try {
-      debugPrint(
-        '[RequestsMapPage] Chamando use case getCurrentUserOpenRequests',
-      );
-      final requests = await ref
-          .read(getCurrentUserOpenRequestsUseCaseProvider)
-          .call();
-      debugPrint(
-        '[RequestsMapPage] ${requests.length} requisiç\u00f5es do usuário carregadas',
-      );
-
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _currentUserOpenRequests = requests;
-      });
-    } catch (e) {
-      debugPrint(
-        '[RequestsMapPage] Erro ao carregar requisiç\u00f5es do usuário: $e',
-      );
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Não foi possível carregar suas requisições abertas.'),
-        ),
-      );
-    } finally {
-      if (withLoadingState && mounted) {
-        setState(() {
-          _isLoadingMyRequests = false;
-        });
-      }
-    }
-  }
-
-  // Novo método _onCreateRequest:
-  Future<void> _onCreateRequest() async {
-    debugPrint('[RequestsMapPage] Abrindo dialog de criar requisiç\u00e3o');
-    final payload = await showModalBottomSheet<_RequestCreatePayload>(
+  Future<void> _onCreateRequest(LatLng mainLocation) async {
+    final payload = await showModalBottomSheet<RequestCreatePayload>(
       context: context,
       backgroundColor: const Color(0xFF222431),
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (context) => _CreateRequestSheet(
-        initialLat: _mainLocation.latitude,
-        initialLon: _mainLocation.longitude,
+      builder: (context) => CreateRequestSheet(
+        initialLat: mainLocation.latitude,
+        initialLon: mainLocation.longitude,
       ),
     );
 
-    if (payload == null) {
-      debugPrint('[RequestsMapPage] Criação de requisiç\u00e3o cancelada');
-      return;
-    }
+    if (payload == null) return;
 
-    debugPrint('[RequestsMapPage] Criando requisiç\u00e3o: ${payload.title}');
     try {
-      await ref
-          .read(createRequestUseCaseProvider)
-          .call(
+      await ref.read(requestsMapProvider.notifier).createRequest(
             title: payload.title,
             description: payload.description,
             budgetRange: payload.budgetRange,
@@ -243,16 +160,11 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
             lat: payload.lat,
             lon: payload.lon,
           );
-      debugPrint('[RequestsMapPage] Requisiç\u00e3o criada com sucesso');
-
-      await _loadMapData();
-
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Requisição criada com sucesso.')),
       );
     } catch (e) {
-      debugPrint('[RequestsMapPage] Erro ao criar requisiç\u00e3o: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Não foi possível criar a requisição.')),
@@ -261,64 +173,37 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
   }
 
   Future<void> _onEditRequest(RequestEntity request) async {
-    debugPrint(
-      '[RequestsMapPage] Abrindo dialog de editar requisiç\u00e3o: ${request.title}',
-    );
-    final payload = await showModalBottomSheet<_RequestEditPayload>(
+    final payload = await showModalBottomSheet<RequestEditPayload>(
       context: context,
       backgroundColor: const Color(0xFF222431),
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (context) => _EditRequestSheet(request: request),
+      builder: (context) => EditRequestSheet(request: request),
     );
 
-    if (payload == null) {
-      debugPrint('[RequestsMapPage] Edição cancelada');
-      return;
-    }
+    if (payload == null) return;
 
-    debugPrint(
-      '[RequestsMapPage] Atualizando requisiç\u00e3o: ${payload.title}',
-    );
     try {
-      await ref
-          .read(updateCurrentUserRequestUseCaseProvider)
-          .call(
+      await ref.read(requestsMapProvider.notifier).updateRequest(
             requestId: request.id,
             title: payload.title,
             description: payload.description,
             budgetRange: payload.budgetRange,
             isRemote: payload.isRemote,
           );
-      debugPrint('[RequestsMapPage] Requisiç\u00e3o atualizada com sucesso');
-
-      await _loadMapData();
-
-      if (!mounted) {
-        return;
-      }
-
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Requisição atualizada com sucesso.')),
       );
     } catch (e) {
-      debugPrint('[RequestsMapPage] Erro ao atualizar requisiç\u00e3o: $e');
-      if (!mounted) {
-        return;
-      }
-
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Não foi possível atualizar a requisição.'),
-        ),
+        const SnackBar(content: Text('Não foi possível atualizar a requisição.')),
       );
     }
   }
 
   Future<void> _onDeleteRequest(RequestEntity request) async {
-    debugPrint(
-      '[RequestsMapPage] Solicitando confirmação para deletar: ${request.title}',
-    );
     final shouldDelete = await showDialog<bool>(
       context: context,
       builder: (context) {
@@ -345,32 +230,16 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
       },
     );
 
-    if (shouldDelete != true) {
-      debugPrint('[RequestsMapPage] Deleção cancelada');
-      return;
-    }
+    if (shouldDelete != true) return;
 
-    debugPrint('[RequestsMapPage] Deletando requisiç\u00e3o: ${request.title}');
     try {
-      await ref
-          .read(deleteCurrentUserRequestUseCaseProvider)
-          .call(requestId: request.id);
-      debugPrint('[RequestsMapPage] Requisiç\u00e3o deletada com sucesso');
-      await _loadMapData();
-
-      if (!mounted) {
-        return;
-      }
-
+      await ref.read(requestsMapProvider.notifier).deleteRequest(request.id);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Requisição excluída com sucesso.')),
       );
     } catch (e) {
-      debugPrint('[RequestsMapPage] Erro ao deletar requisiç\u00e3o: $e');
-      if (!mounted) {
-        return;
-      }
-
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Não foi possível excluir a requisição.')),
       );
@@ -396,124 +265,6 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
     );
   }
 
-  Future<void> _loadMapData() async {
-    debugPrint('[RequestsMapPage] Iniciando carregamento de dados do mapa');
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final mainLocation = await _resolveMainLocation();
-      debugPrint(
-        '[RequestsMapPage] Localização principal obtida: (${mainLocation.latitude},${mainLocation.longitude})',
-      );
-      String? nonBlockingErrorMessage;
-
-      List<RequestEntity> openRequests = const [];
-      try {
-        debugPrint(
-          '[RequestsMapPage] Buscando requisiç\u00f5es pr\u00f3ximas com raio de ${AppConstants.openRequestsRadiusKm}km',
-        );
-        openRequests = await ref
-            .read(getNearbyOpenRequestsUseCaseProvider)
-            .call(
-              center: mainLocation,
-              radiusKm: AppConstants.openRequestsRadiusKm,
-            );
-        debugPrint(
-          '[RequestsMapPage] ${openRequests.length} requisiç\u00f5es pr\u00f3ximas carregadas',
-        );
-      } catch (e) {
-        debugPrint(
-          '[RequestsMapPage] Erro ao carregar requisiç\u00f5es pr\u00f3ximas: $e',
-        );
-        nonBlockingErrorMessage =
-            'Nao foi possível carregar requisições próximas no momento.';
-      }
-
-      List<RequestEntity> currentUserOpenRequests = const [];
-      try {
-        debugPrint('[RequestsMapPage] Carregando requisiç\u00f5es do usuário');
-        currentUserOpenRequests = await ref
-            .read(getCurrentUserOpenRequestsUseCaseProvider)
-            .call();
-        debugPrint(
-          '[RequestsMapPage] ${currentUserOpenRequests.length} requisiç\u00f5es do usuário carregadas',
-        );
-      } catch (e) {
-        debugPrint(
-          '[RequestsMapPage] Erro ao carregar requisiç\u00f5es do usuário: $e',
-        );
-        currentUserOpenRequests = const [];
-      }
-
-      final selectedRequestId = _selectedRequest?.id;
-      RequestEntity? refreshedSelectedRequest;
-      if (selectedRequestId != null) {
-        for (final request in openRequests) {
-          if (request.id == selectedRequestId) {
-            refreshedSelectedRequest = request;
-            debugPrint('[RequestsMapPage] Requisição selecionada atualizada');
-            break;
-          }
-        }
-      }
-
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _mainLocation = mainLocation;
-        _hasResolvedMainLocation = true;
-        _openRequests = openRequests;
-        _currentUserOpenRequests = currentUserOpenRequests;
-        _selectedRequest = refreshedSelectedRequest;
-        _errorMessage = nonBlockingErrorMessage;
-      });
-
-      debugPrint(
-        '[RequestsMapPage] Dados do mapa atualizados. Total: ${openRequests.length} abertas, ${currentUserOpenRequests.length} minhas',
-      );
-      _focusMapOnMainLocationIfNeeded();
-    } catch (e) {
-      debugPrint('[RequestsMapPage] Erro ao carregar dados do mapa: $e');
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _errorMessage =
-            'Não foi possível carregar os dados do mapa. Tente novamente.';
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<LatLng> _resolveMainLocation() async {
-    final deviceLocation = await _resolveDeviceLocation();
-    if (deviceLocation != null && _isValidLatLng(deviceLocation)) {
-      return deviceLocation;
-    }
-
-    final profileLocation = ref
-        .read(authControllerProvider)
-        .valueOrNull
-        ?.profile
-        ?.location;
-    if (profileLocation != null && _isValidLatLng(profileLocation)) {
-      return profileLocation;
-    }
-
-    return _defaultMapCenter;
-  }
-
   bool _isValidLatLng(LatLng point) {
     return point.latitude.isFinite &&
         point.longitude.isFinite &&
@@ -523,55 +274,12 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
         point.longitude <= 180;
   }
 
-  LatLng _mapCenter() {
-    return _isValidLatLng(_mainLocation) ? _mainLocation : _defaultMapCenter;
-  }
-
-  void _focusMapOnMainLocationIfNeeded() {
-    if (!_isMapReady ||
-        _hasCenteredMap ||
-        !_hasResolvedMainLocation ||
-        !mounted) {
-      return;
-    }
-
-    final mapCenter = _mapCenter();
-    if (!_isValidLatLng(mapCenter)) {
-      return;
-    }
-
+  void _focusMapOnMainLocationIfNeeded(LatLng mainLocation, bool hasResolved) {
+    if (!_isMapReady || _hasCenteredMap || !hasResolved || !mounted) return;
+    final mapCenter = _isValidLatLng(mainLocation) ? mainLocation : _defaultMapCenter;
+    if (!_isValidLatLng(mapCenter)) return;
     _mapController.move(mapCenter, 12.5);
     _hasCenteredMap = true;
-  }
-
-  Future<LatLng?> _resolveDeviceLocation() async {
-    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      return null;
-    }
-
-    var permission = await Geolocator.checkPermission();
-
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-
-    if (permission == LocationPermission.denied ||
-        permission == LocationPermission.deniedForever) {
-      return null;
-    }
-
-    try {
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-        ),
-      );
-
-      return LatLng(position.latitude, position.longitude);
-    } catch (_) {
-      return null;
-    }
   }
 
   @override
@@ -583,7 +291,6 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
     final avatarInitial = profileName.isNotEmpty
         ? profileName.substring(0, 1).toUpperCase()
         : 'U';
-
     final colorScheme = Theme.of(context).colorScheme;
     final errorBottomPadding = _isMyRequestsPanelOpen
         ? 448.0
@@ -592,108 +299,133 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
         ? 452.0
         : (_selectedRequest != null ? 238.0 : 86.0);
 
+    final requestsMapStateAsync = ref.watch(requestsMapProvider);
+
     return Scaffold(
-      body: Stack(
-        children: [
-          FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: _mapCenter(),
-              initialZoom: 12,
-              minZoom: 5,
-              maxZoom: 18,
-              onMapReady: () {
-                _isMapReady = true;
-                _focusMapOnMainLocationIfNeeded();
-              },
-            ),
+      body: requestsMapStateAsync.when(
+        data: (state) {
+          final mainLocation = state.mainLocation;
+          final mapCenter = _isValidLatLng(mainLocation) ? mainLocation : _defaultMapCenter;
+          
+          if (_selectedRequest != null) {
+            final exists = state.openRequests.any((r) => r.id == _selectedRequest!.id);
+            if (!exists) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) setState(() => _selectedRequest = null);
+              });
+            } else {
+              _selectedRequest = state.openRequests.firstWhere((r) => r.id == _selectedRequest!.id);
+            }
+          }
+
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _focusMapOnMainLocationIfNeeded(mainLocation, state.hasResolvedMainLocation);
+          });
+
+          return Stack(
             children: [
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.caiomtho.teco',
-              ),
-              CircleLayer(
-                circles: [
-                  CircleMarker(
-                    point: _mapCenter(),
-                    radius: AppConstants.openRequestsRadiusKm * 1000,
-                    useRadiusInMeter: true,
-                    color: colorScheme.primary.withValues(alpha: 0.14),
-                    borderColor: colorScheme.primary,
-                    borderStrokeWidth: 1,
+              FlutterMap(
+                mapController: _mapController,
+                options: MapOptions(
+                  initialCenter: mapCenter,
+                  initialZoom: 12,
+                  minZoom: 5,
+                  maxZoom: 18,
+                  onMapReady: () {
+                    _isMapReady = true;
+                    _focusMapOnMainLocationIfNeeded(mainLocation, state.hasResolvedMainLocation);
+                  },
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'com.caiomtho.teco',
+                  ),
+                  CircleLayer(
+                    circles: [
+                      CircleMarker(
+                        point: mapCenter,
+                        radius: AppConstants.openRequestsRadiusKm * 1000,
+                        useRadiusInMeter: true,
+                        color: colorScheme.primary.withOpacity(0.14),
+                        borderColor: colorScheme.primary,
+                        borderStrokeWidth: 1,
+                      ),
+                    ],
+                  ),
+                  MarkerLayer(
+                    markers: [
+                      _buildMainMarker(colorScheme, mapCenter),
+                      ..._buildRequestMarkers(colorScheme, state.openRequests),
+                    ],
                   ),
                 ],
               ),
-              MarkerLayer(
-                markers: [
-                  _buildMainMarker(colorScheme),
-                  ..._buildRequestMarkers(colorScheme),
-                ],
-              ),
-            ],
-          ),
-          SafeArea(
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                child: _TopBar(
-                  colorScheme: colorScheme,
-                  avatarInitial: avatarInitial,
+              SafeArea(
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                    child: _TopBar(
+                      colorScheme: colorScheme,
+                      avatarInitial: avatarInitial,
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: SafeArea(
-              minimum: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 240),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                child: _isMyRequestsPanelOpen
-                    ? _MyRequestsModal(
-                        key: const ValueKey('my-requests-modal'),
-                        requests: _currentUserOpenRequests,
-                        isLoading: _isLoadingMyRequests,
-                        onClose: _closeMyRequestsPanel,
-                        onRefresh: () {
-                          _refreshMyOpenRequests(withLoadingState: true);
-                        },
-                        onEdit: _onEditRequest,
-                        onDelete: _onDeleteRequest,
-                        onCreateRequest: _onCreateRequest,
-                      )
-                    : _selectedRequest == null
-                    ? _BottomBar(
-                        key: const ValueKey('bottom-bar'),
-                        onHomeTap: () {
-                          setState(() {
-                            _selectedRequest = null;
-                            _isMyRequestsPanelOpen = false;
-                          });
-                        },
-                        onRequestsTap: _openMyRequestsPanel,
-                      )
-                    : _RequestDetailsModal(
-                        key: ValueKey(_selectedRequest!.id),
-                        request: _selectedRequest!,
-                        onClose: _onCloseRequestModal,
-                        isProvider: isProvider,
-                        onCreateChat: _onCreateChat,
-                      ),
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: SafeArea(
+                  minimum: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 240),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    child: _isMyRequestsPanelOpen
+                        ? MyRequestsModal(
+                            key: const ValueKey('my-requests-modal'),
+                            requests: state.currentUserOpenRequests,
+                            isLoading: _isLoadingMyRequests,
+                            onClose: _closeMyRequestsPanel,
+                            onRefresh: () async {
+                              setState(() => _isLoadingMyRequests = true);
+                              await ref.read(requestsMapProvider.notifier).refreshMyOpenRequests();
+                              if (mounted) setState(() => _isLoadingMyRequests = false);
+                            },
+                            onEdit: _onEditRequest,
+                            onDelete: _onDeleteRequest,
+                            onCreateRequest: () => _onCreateRequest(mainLocation),
+                          )
+                        : _selectedRequest == null
+                        ? _BottomBar(
+                            key: const ValueKey('bottom-bar'),
+                            onHomeTap: () {
+                              setState(() {
+                                _selectedRequest = null;
+                                _isMyRequestsPanelOpen = false;
+                              });
+                            },
+                            onRequestsTap: _openMyRequestsPanel,
+                          )
+                        : RequestDetailsModal(
+                            key: ValueKey(_selectedRequest!.id),
+                            request: _selectedRequest!,
+                            onClose: _onCloseRequestModal,
+                            isProvider: isProvider,
+                            onCreateChat: _onCreateChat,
+                          ),
+                  ),
+                ),
               ),
-            ),
-          ),
-          if (_isLoading)
-            const Positioned.fill(
-              child: ColoredBox(
-                color: Color(0x22000000),
-                child: Center(child: CircularProgressIndicator()),
-              ),
-            ),
-          if (_errorMessage != null)
+            ],
+          );
+        },
+        loading: () => const ColoredBox(
+          color: Color(0x22000000),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+        error: (error, stack) => Stack(
+          children: [
             Positioned(
               left: 16,
               right: 16,
@@ -701,16 +433,17 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
               child: Material(
                 borderRadius: BorderRadius.circular(12),
                 color: const Color(0xCCB00020),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
+                child: const Padding(
+                  padding: EdgeInsets.all(12),
                   child: Text(
-                    _errorMessage!,
-                    style: const TextStyle(color: Colors.white),
+                    'Não foi possível carregar os dados do mapa. Tente novamente.',
+                    style: TextStyle(color: Colors.white),
                   ),
                 ),
               ),
             ),
-        ],
+          ],
+        ),
       ),
       floatingActionButton: _isMyRequestsPanelOpen
           ? null
@@ -725,7 +458,9 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
                     child: FloatingActionButton.small(
                       heroTag: 'requests-map-refresh',
                       hoverElevation: 10,
-                      onPressed: _isLoading ? null : _loadMapData,
+                      onPressed: requestsMapStateAsync.isLoading
+                          ? null
+                          : () => ref.read(requestsMapProvider.notifier).reload(),
                       child: const Icon(Icons.refresh_rounded),
                     ),
                   ),
@@ -736,9 +471,14 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
                       heroTag: 'requests-map-location',
                       hoverElevation: 10,
                       onPressed: () {
-                        final mapCenter = _mapCenter();
-                        if (_isValidLatLng(mapCenter)) {
-                          _mapController.move(mapCenter, 13.5);
+                        final state = ref.read(requestsMapProvider).valueOrNull;
+                        if (state != null) {
+                          final mapCenter = _isValidLatLng(state.mainLocation)
+                              ? state.mainLocation
+                              : _defaultMapCenter;
+                          if (_isValidLatLng(mapCenter)) {
+                            _mapController.move(mapCenter, 13.5);
+                          }
                         }
                       },
                       child: const Icon(Icons.my_location_rounded),
@@ -750,9 +490,9 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
     );
   }
 
-  Marker _buildMainMarker(ColorScheme colorScheme) {
+  Marker _buildMainMarker(ColorScheme colorScheme, LatLng center) {
     return Marker(
-      point: _mapCenter(),
+      point: center,
       width: 52,
       height: 52,
       child: GestureDetector(
@@ -779,9 +519,9 @@ class _RequestsMapPageState extends ConsumerState<RequestsMapPage> {
     );
   }
 
-  List<Marker> _buildRequestMarkers(ColorScheme colorScheme) {
-    return _openRequests
-      .where((request) => _isValidLatLng(request.location))
+  List<Marker> _buildRequestMarkers(ColorScheme colorScheme, List<RequestEntity> openRequests) {
+    return openRequests
+        .where((request) => _isValidLatLng(request.location))
         .map(
           (request) => Marker(
             point: request.location,
@@ -834,14 +574,13 @@ class _TopBar extends StatelessWidget {
                     opaque: false,
                     pageBuilder: (context, animation, secondaryAnimation) =>
                         const ChatListPanel(),
-                    transitionsBuilder:
-                        (context, animation, secondaryAnimation, child) {
-                          final slide = Tween<Offset>(
-                            begin: const Offset(-1, 0),
-                            end: Offset.zero,
-                          ).animate(animation);
-                          return SlideTransition(position: slide, child: child);
-                        },
+                    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                      final slide = Tween<Offset>(
+                        begin: const Offset(-1, 0),
+                        end: Offset.zero,
+                      ).animate(animation);
+                      return SlideTransition(position: slide, child: child);
+                    },
                   ),
                 );
               },
@@ -869,9 +608,9 @@ class _TopBar extends StatelessWidget {
                 child: Text(
                   avatarInitial,
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
                 ),
               ),
             ),
@@ -884,7 +623,7 @@ class _TopBar extends StatelessWidget {
 
 class _BottomBar extends StatelessWidget {
   const _BottomBar({
-    super.key,
+    super.key, // ignore: unused_element
     required this.onHomeTap,
     required this.onRequestsTap,
   });
@@ -969,9 +708,9 @@ class _BottomIcon extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: iconColor,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                ),
+                      color: iconColor,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    ),
               ),
             ],
           ),
@@ -1013,803 +752,6 @@ class _TopBarAction extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: Material(color: Colors.transparent, child: button),
-    );
-  }
-}
-
-class _RequestDetailsModal extends StatelessWidget {
-  const _RequestDetailsModal({
-    super.key,
-    required this.request,
-    required this.onClose,
-    required this.isProvider,
-    required this.onCreateChat,
-  });
-
-  final RequestEntity request;
-  final VoidCallback onClose;
-  final bool isProvider;
-  final Future<void> Function() onCreateChat;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final description = request.description?.trim();
-
-    return Material(
-      elevation: 10,
-      color: const Color(0xFF222431),
-      borderRadius: BorderRadius.circular(24),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    request.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Tooltip(
-                  message: 'Fechar',
-                  child: IconButton(
-                    onPressed: onClose,
-                    icon: const Icon(Icons.close_rounded),
-                    color: Colors.white,
-                    hoverColor: Colors.white10,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              description != null && description.isNotEmpty
-                  ? description
-                  : 'Sem descrição para esta requisição.',
-              maxLines: 4,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: Colors.white70),
-            ),
-            const SizedBox(height: 14),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Tooltip(
-                message: isProvider
-                    ? ''
-                    : 'Somente prestadores de serviço podem iniciar chats',
-                child: FilledButton.icon(
-                  onPressed: isProvider ? onCreateChat : null,
-                  icon: const Icon(Icons.chat_bubble_outline_rounded),
-                  label: const Text('Criar chat'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: colorScheme.primary,
-                    foregroundColor: colorScheme.onPrimary,
-                    disabledBackgroundColor: Colors.white12,
-                    disabledForegroundColor: Colors.white38,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MyRequestsModal extends StatelessWidget {
-  const _MyRequestsModal({
-    super.key,
-    required this.requests,
-    required this.isLoading,
-    required this.onClose,
-    required this.onRefresh,
-    required this.onEdit,
-    required this.onDelete,
-    required this.onCreateRequest,
-  });
-
-  final List<RequestEntity> requests;
-  final bool isLoading;
-  final VoidCallback onClose;
-  final VoidCallback onRefresh;
-  final ValueChanged<RequestEntity> onEdit;
-  final ValueChanged<RequestEntity> onDelete;
-  final VoidCallback onCreateRequest;
-
-  @override
-  Widget build(BuildContext context) {
-    final height = MediaQuery.sizeOf(context).height * 0.62;
-    final textTheme = Theme.of(context).textTheme;
-
-    return Material(
-      elevation: 10,
-      color: const Color(0xFF222431),
-      borderRadius: BorderRadius.circular(24),
-      child: SizedBox(
-        height: height,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Suas requisicoes abertas',
-                      style: textTheme.titleMedium?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  Tooltip(
-                    message: 'Nova requisição',
-                    child: IconButton(
-                      onPressed: onCreateRequest,
-                      icon: const Icon(Icons.add_circle_outline_rounded),
-                      color: Colors.white,
-                      hoverColor: Colors.white10,
-                    ),
-                  ),
-                  Tooltip(
-                    message: 'Atualizar lista',
-                    child: IconButton(
-                      onPressed: onRefresh,
-                      icon: const Icon(Icons.refresh_rounded),
-                      color: Colors.white,
-                      hoverColor: Colors.white10,
-                    ),
-                  ),
-                  Tooltip(
-                    message: 'Fechar',
-                    child: IconButton(
-                      onPressed: onClose,
-                      icon: const Icon(Icons.close_rounded),
-                      color: Colors.white,
-                      hoverColor: Colors.white10,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                requests.length == 1
-                    ? '1 requisição aberta'
-                    : '${requests.length} requisições abertas',
-                style: textTheme.bodySmall?.copyWith(color: Colors.white70),
-              ),
-              const SizedBox(height: 12),
-              Expanded(
-                child: isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : requests.isEmpty
-                    ? Center(
-                        child: Text(
-                          'Você não possui requisições abertas no momento.',
-                          style: textTheme.bodyMedium?.copyWith(
-                            color: Colors.white70,
-                          ),
-                        ),
-                      )
-                    : ListView.separated(
-                        itemCount: requests.length,
-                        separatorBuilder: (_, index) =>
-                            const SizedBox(height: 10),
-                        itemBuilder: (context, index) {
-                          final request = requests[index];
-                          return _MyRequestCard(
-                            request: request,
-                            onEdit: () => onEdit(request),
-                            onDelete: () => onDelete(request),
-                          );
-                        },
-                      ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MyRequestCard extends StatelessWidget {
-  const _MyRequestCard({
-    required this.request,
-    required this.onEdit,
-    required this.onDelete,
-  });
-
-  final RequestEntity request;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final description = request.description?.trim();
-
-    return Card(
-      margin: EdgeInsets.zero,
-      color: const Color(0xFF2A2D3B),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    request.title,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                Chip(
-                  label: const Text('Aberta'),
-                  visualDensity: VisualDensity.compact,
-                  backgroundColor: colorScheme.primary.withValues(alpha: 0.20),
-                  labelStyle: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: colorScheme.onPrimary,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              description != null && description.isNotEmpty
-                  ? description
-                  : 'Sem descricao.',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: Colors.white70),
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                _RequestMetaChip(
-                  icon: Icons.attach_money_rounded,
-                  text: request.budgetRange?.isNotEmpty == true
-                      ? 'Até ${request.budgetRange!}'
-                      : 'Valor a combinar',
-                ),
-                _RequestMetaChip(
-                  icon: request.isRemote == true
-                      ? Icons.wifi_rounded
-                      : Icons.location_on_outlined,
-                  text: request.isRemote == true ? 'Remoto' : 'Presencial',
-                ),
-                _RequestMetaChip(
-                  icon: Icons.schedule_rounded,
-                  text: _formatDate(request.createdAt),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: onEdit,
-                    icon: const Icon(Icons.edit_rounded),
-                    label: const Text('Editar'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      side: const BorderSide(color: Colors.white30),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: onDelete,
-                    icon: const Icon(Icons.delete_outline_rounded),
-                    label: const Text('Excluir'),
-                    style: FilledButton.styleFrom(
-                      foregroundColor: colorScheme.onErrorContainer,
-                      backgroundColor: colorScheme.errorContainer,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _formatDate(DateTime? value) {
-    if (value == null) {
-      return 'Sem data';
-    }
-
-    final day = value.day.toString().padLeft(2, '0');
-    final month = value.month.toString().padLeft(2, '0');
-    final year = value.year.toString();
-    final hour = value.hour.toString().padLeft(2, '0');
-    final minute = value.minute.toString().padLeft(2, '0');
-
-    return '$day/$month/$year $hour:$minute';
-  }
-}
-
-class _RequestMetaChip extends StatelessWidget {
-  const _RequestMetaChip({required this.icon, required this.text});
-
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: const Color(0x1AFFFFFF),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: Colors.white70),
-            const SizedBox(width: 6),
-            Text(
-              text,
-              style: Theme.of(
-                context,
-              ).textTheme.labelSmall?.copyWith(color: Colors.white70),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _RequestEditPayload {
-  const _RequestEditPayload({
-    required this.title,
-    required this.description,
-    required this.budgetRange,
-    required this.isRemote,
-  });
-
-  final String title;
-  final String? description;
-  final String? budgetRange;
-  final bool isRemote;
-}
-
-class _EditRequestSheet extends StatefulWidget {
-  const _EditRequestSheet({required this.request});
-
-  final RequestEntity request;
-
-  @override
-  State<_EditRequestSheet> createState() => _EditRequestSheetState();
-}
-
-class _EditRequestSheetState extends State<_EditRequestSheet> {
-  late final TextEditingController _titleController;
-  late final TextEditingController _descriptionController;
-  late final TextEditingController _budgetRangeController;
-  late bool _isRemote;
-
-  bool _isSaving = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _titleController = TextEditingController(text: widget.request.title);
-    _descriptionController = TextEditingController(
-      text: widget.request.description,
-    );
-    _budgetRangeController = TextEditingController(
-      text: widget.request.budgetRange,
-    );
-    _isRemote = widget.request.isRemote ?? false;
-  }
-
-  @override
-  void dispose() {
-    _titleController.dispose();
-    _descriptionController.dispose();
-    _budgetRangeController.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final title = _titleController.text.trim();
-    if (title.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Informe um título para a requisição.')),
-      );
-      return;
-    }
-
-    final description = _descriptionController.text.trim();
-    final budgetRange = _budgetRangeController.text.trim();
-
-    setState(() {
-      _isSaving = true;
-    });
-
-    Navigator.of(context).pop(
-      _RequestEditPayload(
-        title: title,
-        description: description.isEmpty ? null : description,
-        budgetRange: budgetRange.isEmpty ? null : budgetRange,
-        isRemote: _isRemote,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    final colorScheme = Theme.of(context).colorScheme;
-    const inputTextColor = Colors.white;
-    const inputLabelColor = Colors.white70;
-    const inputHintColor = Colors.white54;
-
-    final enabledBorder = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: const BorderSide(color: Colors.white38),
-    );
-    final focusedBorder = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: BorderSide(color: colorScheme.primary, width: 1.6),
-    );
-
-    InputDecoration decoration({required String label, String? hint}) {
-      return InputDecoration(
-        labelText: label,
-        hintText: hint,
-        filled: true,
-        fillColor: const Color(0xFF2A2D3B),
-        border: enabledBorder,
-        enabledBorder: enabledBorder,
-        focusedBorder: focusedBorder,
-        labelStyle: const TextStyle(color: inputLabelColor),
-        hintStyle: const TextStyle(color: inputHintColor),
-      );
-    }
-
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Editar requisição',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _titleController,
-              textInputAction: TextInputAction.next,
-              style: const TextStyle(color: inputTextColor),
-              cursorColor: colorScheme.primary,
-              decoration: decoration(label: 'Título'),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _descriptionController,
-              textInputAction: TextInputAction.newline,
-              minLines: 2,
-              maxLines: 4,
-              style: const TextStyle(color: inputTextColor),
-              cursorColor: colorScheme.primary,
-              decoration: decoration(
-                label: 'Descrição',
-                hint:
-                    'Ex.: Notebook não liga após atualização. Preciso de diagnóstico e possível troca de peça.',
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _budgetRangeController,
-              textInputAction: TextInputAction.done,
-              style: const TextStyle(color: inputTextColor),
-              cursorColor: colorScheme.primary,
-              decoration: decoration(
-                label: 'Até quanto pode pagar',
-                hint: 'Ex.: R\$ 600',
-              ),
-            ),
-            const SizedBox(height: 8),
-            SwitchListTile.adaptive(
-              value: _isRemote,
-              onChanged: (value) {
-                setState(() {
-                  _isRemote = value;
-                });
-              },
-              contentPadding: EdgeInsets.zero,
-              title: const Text(
-                'Aceita trabalho remoto',
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _isSaving ? null : _submit,
-                icon: const Icon(Icons.save_outlined),
-                label: const Text('Salvar alteracoes'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _RequestCreatePayload {
-  const _RequestCreatePayload({
-    required this.title,
-    required this.description,
-    required this.budgetRange,
-    required this.isRemote,
-    required this.lat,
-    required this.lon,
-  });
-
-  final String title;
-  final String? description;
-  final double? budgetRange;
-  final bool isRemote;
-  final double lat;
-  final double lon;
-}
-
-class _CreateRequestSheet extends StatefulWidget {
-  const _CreateRequestSheet({
-    required this.initialLat,
-    required this.initialLon,
-  });
-
-  final double initialLat;
-  final double initialLon;
-
-  @override
-  State<_CreateRequestSheet> createState() => _CreateRequestSheetState();
-}
-
-class _CreateRequestSheetState extends State<_CreateRequestSheet> {
-  final _titleController = TextEditingController();
-  final _descriptionController = TextEditingController();
-  final _budgetController = TextEditingController();
-  String? _titleError;
-  String? _budgetError;
-  bool _isRemote = false;
-  bool _isSaving = false;
-
-  @override
-  void dispose() {
-    _titleController.dispose();
-    _descriptionController.dispose();
-    _budgetController.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final title = _titleController.text.trim();
-    final description = _descriptionController.text.trim();
-    final budgetText = _budgetController.text.trim().replaceAll(',', '.');
-    final budgetRange = budgetText.isNotEmpty
-        ? double.tryParse(budgetText)
-        : null;
-    final titleError = title.isEmpty
-        ? 'Informe um título para a requisição.'
-        : null;
-    final budgetError = budgetText.isNotEmpty && budgetRange == null
-        ? 'Informe um valor numérico válido.'
-        : null;
-
-    if (titleError != null || budgetError != null) {
-      setState(() {
-        _titleError = titleError;
-        _budgetError = budgetError;
-      });
-      return;
-    }
-
-    setState(() {
-      _titleError = null;
-      _budgetError = null;
-      _isSaving = true;
-    });
-
-    Navigator.of(context).pop(
-      _RequestCreatePayload(
-        title: title,
-        description: description.isEmpty ? null : description,
-        budgetRange: budgetRange,
-        isRemote: _isRemote,
-        lat: widget.initialLat,
-        lon: widget.initialLon,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    final colorScheme = Theme.of(context).colorScheme;
-    const inputTextColor = Colors.white;
-    const inputLabelColor = Colors.white70;
-    const inputHintColor = Colors.white54;
-
-    final enabledBorder = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: const BorderSide(color: Colors.white38),
-    );
-    final focusedBorder = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: BorderSide(color: colorScheme.primary, width: 1.6),
-    );
-    final errorBorder = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: BorderSide(color: colorScheme.error),
-    );
-
-    InputDecoration decoration({
-      required String label,
-      String? hint,
-      String? errorText,
-    }) {
-      return InputDecoration(
-        labelText: label,
-        hintText: hint,
-        errorText: errorText,
-        filled: true,
-        fillColor: const Color(0xFF2A2D3B),
-        border: enabledBorder,
-        enabledBorder: enabledBorder,
-        focusedBorder: focusedBorder,
-        errorBorder: errorBorder,
-        focusedErrorBorder: errorBorder,
-        labelStyle: const TextStyle(color: inputLabelColor),
-        hintStyle: const TextStyle(color: inputHintColor),
-      );
-    }
-
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Nova requisição',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _titleController,
-              textInputAction: TextInputAction.next,
-              style: const TextStyle(color: inputTextColor),
-              cursorColor: colorScheme.primary,
-              onChanged: (_) {
-                if (_titleError != null) {
-                  setState(() {
-                    _titleError = null;
-                  });
-                }
-              },
-              decoration: decoration(label: 'Título *', errorText: _titleError),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _descriptionController,
-              textInputAction: TextInputAction.newline,
-              minLines: 2,
-              maxLines: 4,
-              style: const TextStyle(color: inputTextColor),
-              cursorColor: colorScheme.primary,
-              decoration: decoration(
-                label: 'Descrição',
-                hint:
-                    'Ex.: Computador lento, sem acesso à internet e impressora não conecta. Preciso de suporte presencial.',
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _budgetController,
-              textInputAction: TextInputAction.done,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              style: const TextStyle(color: inputTextColor),
-              cursorColor: colorScheme.primary,
-              onChanged: (_) {
-                if (_budgetError != null) {
-                  setState(() {
-                    _budgetError = null;
-                  });
-                }
-              },
-              decoration: decoration(
-                label: 'Até quanto pode pagar (R\$)',
-                hint: 'Ex.: 500',
-                errorText: _budgetError,
-              ),
-            ),
-            const SizedBox(height: 8),
-            SwitchListTile.adaptive(
-              value: _isRemote,
-              onChanged: (value) => setState(() => _isRemote = value),
-              contentPadding: EdgeInsets.zero,
-              title: const Text(
-                'Aceita trabalho remoto',
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                const Icon(
-                  Icons.location_on_outlined,
-                  size: 14,
-                  color: Colors.white38,
-                ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    'Localização: ${widget.initialLat.toStringAsFixed(5)}, '
-                    '${widget.initialLon.toStringAsFixed(5)}',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.labelSmall?.copyWith(color: Colors.white54),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _isSaving ? null : _submit,
-                icon: const Icon(Icons.add_circle_outline_rounded),
-                label: const Text('Criar requisição'),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

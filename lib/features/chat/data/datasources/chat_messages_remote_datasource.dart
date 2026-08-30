@@ -1,22 +1,27 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../../core/services/supabase_service.dart';
 import '../../domain/entities/chat_entity.dart';
 import 'chat_realtime.dart';
 
 class ChatMessagesRemoteDataSource {
-  Future<List<MessageEntity>> getChatMessages(String chatId) async {
-    debugPrint('[ChatMessagesRemoteDataSource] Iniciando carregamento de mensagens para chat: $chatId');
+  final SupabaseClient supabaseClient;
+
+  ChatMessagesRemoteDataSource(this.supabaseClient);
+
+  Future<List<MessageEntity>> getChatMessages(String chatId, {int offset = 0, int limit = 50}) async {
+    debugPrint('[ChatMessagesRemoteDataSource] Iniciando carregamento de mensagens para chat: $chatId (offset: $offset, limit: $limit)');
     try {
-      final client = SupabaseService.client;
+      final client = supabaseClient;
         final response = await client
           .from('messages')
           .select()
           .eq('chat_id', chatId)
           .filter('deleted_at', 'is', null)
-          .order('created_at', ascending: true);
+          .order('created_at', ascending: false)
+          .range(offset, offset + limit - 1);
 
       final rows = _asListOfMaps(response);
       debugPrint('[ChatMessagesRemoteDataSource] Carregadas ${rows.length} mensagens');
@@ -31,7 +36,7 @@ class ChatMessagesRemoteDataSource {
   Future<MessageEntity> sendMessage(String chatId, String content) async {
     debugPrint('[ChatMessagesRemoteDataSource] Enviando mensagem para chat: $chatId');
     try {
-      final client = SupabaseService.client;
+      final client = supabaseClient;
       final userId = client.auth.currentUser?.id;
       if (userId == null) {
         throw StateError('No authenticated user found');
@@ -57,7 +62,7 @@ class ChatMessagesRemoteDataSource {
 
   Stream<MessageEntity> listenToChatMessages(String chatId) {
     debugPrint('[ChatMessagesRemoteDataSource] Iniciando listener para chat: $chatId');
-    final client = SupabaseService.client;
+    final client = supabaseClient;
     final controller = StreamController<MessageEntity>();
 
     final realtime = ChatRealtime(supabase: client, topic: 'chat:$chatId');

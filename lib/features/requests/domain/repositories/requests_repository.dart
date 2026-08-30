@@ -14,7 +14,7 @@ abstract class RequestsRepository {
     required String requestId,
     required String title,
     String? description,
-    String? budgetRange,
+    double? budgetRange,
     required bool isRemote,
   });
 

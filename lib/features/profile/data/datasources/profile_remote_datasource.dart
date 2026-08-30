@@ -1,16 +1,21 @@
 import 'package:latlong2/latlong.dart';
 
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../../../../core/services/location_geocoding_service.dart';
-import '../../../../core/services/supabase_service.dart';
 import '../../domain/entities/profile_entity.dart';
 import '../../domain/exceptions/profile_exceptions.dart';
 
 class ProfileRemoteDataSource {
+  final SupabaseClient supabaseClient;
+
+  const ProfileRemoteDataSource({required this.supabaseClient});
+
   static const LocationGeocodingService _locationGeocodingService =
       LocationGeocodingService();
 
   Future<ProfileEntity> getCurrentUserProfile() async {
-    final userId = SupabaseService.client.auth.currentUser?.id;
+    final userId = supabaseClient.auth.currentUser?.id;
     if (userId == null || userId.isEmpty) {
       throw const ProfileAuthRequiredException();
     }
@@ -23,7 +28,7 @@ class ProfileRemoteDataSource {
     String? cpfCnpj,
     LatLng? location,
   }) async {
-    final userId = SupabaseService.client.auth.currentUser?.id;
+    final userId = supabaseClient.auth.currentUser?.id;
     if (userId == null || userId.isEmpty) {
       throw const ProfileAuthRequiredException();
     }
@@ -38,7 +43,7 @@ class ProfileRemoteDataSource {
           'POINT(${location.longitude} ${location.latitude})';
     }
 
-    await SupabaseService.client
+    await supabaseClient
         .from('profiles')
         .update(updatePayload)
         .eq('id', userId);
@@ -47,7 +52,7 @@ class ProfileRemoteDataSource {
   }
 
   Future<ProfileEntity> _getProfileByRpc(String userId) async {
-    final rpcResponse = await SupabaseService.client.rpc(
+    final rpcResponse = await supabaseClient.rpc(
       'get_profile_with_location_lat_lng',
       params: {'p_user_id': userId},
     );
